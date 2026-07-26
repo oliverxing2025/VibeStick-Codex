@@ -10,7 +10,7 @@ This audit documents the v0.1.1 repository state after cleanup.
 | `assets/brand/vibestick-icon.svg` | Project-generated simple geometry | Temporary VibeStick brand icon | MIT under this repository | Low | Keep until polished branding exists. |
 | `assets/providers/**` and `firmware/sticks3/assets/providers/**` | Project-generated simple geometry | Temporary provider/status icons | MIT under this repository | Low | Keep. Avoid replacing with third-party brand marks unless license/brand usage is reviewed. |
 | `firmware/sticks3/generated/vibe_stick_ui_assets.c/.h` | Generated from project-owned PNG icons | LVGL image descriptors for provider icons | MIT under this repository | Low | Keep. |
-| `firmware/sticks3/generated/vibe_stick_cn_16.c` | Generated from Source Han Sans K Regular | LVGL Chinese glyph subset for StickS3 UI | Source font is SIL Open Font License 1.1, copyright Adobe 2014-2021 | Medium | Keep with NOTICE attribution. Do not use the reserved Source name as an VibeStick brand. |
+| `firmware/sticks3/generated/vibe_stick_cn_16.c` | Generated from Noto Sans SC Regular | LVGL Chinese glyph subset for StickS3 UI | Source font is SIL Open Font License 1.1 | Medium | Keep with NOTICE attribution. Do not use the reserved font name as a VibeStick brand. |
 | `firmware/sticks3/src/idf_component.yml` dependencies: `espressif/button`, `espressif/esp_codec_dev`, `lvgl/lvgl` | ESP Component Registry | Build-time firmware dependencies | External open-source components, not vendored after cleanup | Low | Keep dependency manifest and lock file. Review component licenses before binary release. |
 | ESP-IDF framework | Espressif | Firmware framework | External SDK, not vendored | Low | Keep as build prerequisite. |
 | Groq ASR API | Optional external service | Optional speech-to-text when configured | Service API, no source vendored | Medium | Document that audio leaves the Mac when Groq is configured. Do not commit API keys. |
@@ -22,6 +22,6 @@ This audit documents the v0.1.1 repository state after cleanup.
 
 ## Summary
 
-No third-party source code or brand assets are intentionally vendored in this repository after cleanup, except the generated Chinese LVGL glyph subset derived from Source Han Sans K under the SIL Open Font License 1.1. Build-time firmware dependencies are resolved through the ESP-IDF component manager and are not committed as vendored source.
+No third-party source code or brand assets are intentionally vendored in this repository after cleanup, except the generated Chinese LVGL glyph subset derived from Noto Sans SC under the SIL Open Font License 1.1. Build-time firmware dependencies are resolved through the ESP-IDF component manager and are not committed as vendored source.
 
-Before a public binary release, review the exact ESP-IDF/component licenses included in the firmware image and ensure the Source Han Sans K attribution remains in NOTICE.
+Before a public binary release, review the exact ESP-IDF/component licenses included in the firmware image and ensure the Noto Sans SC attribution remains in NOTICE.

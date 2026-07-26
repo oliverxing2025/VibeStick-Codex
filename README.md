@@ -2,35 +2,31 @@
 
 [中文说明](README.zh-CN.md)
 
-![VibeStick home screen showing Codex and Claude providers](assets/brand/home-screen-preview.png)
-
 ![VibeStick voice input flow showing StickS3 recording states and Mac HUD](assets/brand/voice-input-preview.png)
 
-VibeStick turns an M5Stack StickS3 into a tiny desktop companion for coding agents: status, 5H/7D usage, alerts, and push-to-talk transcription into your Mac.
+VibeStick turns an M5Stack StickS3 into a tiny Codex terminal: live status, quota remaining, usage consumed, today's tokens, alerts, and push-to-talk transcription entered into Codex for manual submission.
 
-VibeStick targets M5Stack StickS3 hardware and is not an official M5Stack project. Third-party agent names such as Codex and Claude describe compatible local tools and integrations only.
+This branch targets M5Stack StickS3 and integrates local Codex only. It is not an official M5Stack or OpenAI project.
 
 ## What you'll need (prepare first)
 
 - [ ] M5Stack StickS3 and a USB-C data cable.
 - [ ] A Mac on the same network as the StickS3.
 - [ ] Wi-Fi name and password. The Wi-Fi must be 2.4 GHz; StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
-- [ ] To show Claude 5H/7D usage: this feature is off by default (safer). It needs the Claude Code CLI (run `claude` then `/login` in Terminal) and `VIBE_STICK_CLAUDE_USAGE=on` in `.env`.
 - [ ] An ASR API key for speech transcription. Recommended: SiliconFlow at <https://cloud.siliconflow.cn/i/7ZCoy9fU>. It works directly in China, has free quota, and is OpenAI-compatible. The demo video uses SiliconFlow. You can also use another OpenAI-compatible ASR provider's `base_url` and model name instead.
 
 Building the firmware needs ESP-IDF v5.5.x — a one-time toolchain install (~1 GB, a few minutes). The install steps below set it up for you; no need to pre-install. Reference: Espressif's [ESP-IDF v5.5.1 ESP32-S3 guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/get-started/index.html).
 
 ## Install
 
-You can do this manually, or hand the command steps to an AI coding agent such as Claude Code and Codex.
+You can do this manually or hand the command steps to Codex.
 
 > Legend: steps marked 👤 are PHYSICAL steps that need a human to act directly, such as plugging in the cable, long-pressing or short-pressing the power button, and granting macOS permissions in System Settings. AI agents should run the shell steps in order, then pause at each 👤 step and ask the user to complete it before continuing.
 
-1. Clone the repo and create local config files:
+1. Enter the local project and create config files:
 
 ```sh
-git clone https://github.com/GaryGaryyy/VibeStick.git
-cd VibeStick
+cd VibeStick-Codex
 ./scripts/setup.sh
 ```
 
@@ -101,11 +97,16 @@ Wait for `Hash of data verified`.
 ./scripts/doctor.sh
 ```
 
-Aim for all required checks to pass. Then glance at the StickS3: Codex / Claude status and 5H / 7D usage should show real values when the corresponding local provider data is available.
+Aim for all required checks to pass. The StickS3 should show Wi-Fi, time, battery, Codex status, and `FUNDS / TODAY / TOKEN`.
 
-If Codex works but the Claude column shows `--%`, that is expected: Claude usage is disabled by default (safer), so to display it set `VIBE_STICK_CLAUDE_USAGE=on` and make sure Claude Code is logged in via `claude` and `/login`.
+11. 👤 Test both buttons:
 
-11. 👤 Open any text box, long-press the front blue button, speak, and release. VibeStick should transcribe and paste the text automatically.
+- Front blue, short press: open/focus Codex; approve when Codex is waiting for confirmation.
+- Front blue, double press: refresh `FUNDS / TODAY / TOKEN`.
+- Front blue, hold and release: record, transcribe, and enter into Codex without submitting.
+- Side, short press: send the current input.
+- Side, double press: clear the current input text.
+- Side, hold: create a new Codex chat.
 
 For development without installing LaunchAgents, run `./scripts/dev.sh` from the repository root instead of `./scripts/install.sh`.
 
@@ -163,7 +164,6 @@ Empty values in `.env` generally mean "use the built-in default". `scripts/dev.s
 
 - `VIBE_STICK_PROJECT_ROOT`: project root used for local Codex session observation.
 - `VIBE_STICK_PROJECT_NAME`: optional display-name override.
-- `VIBE_STICK_PROVIDER`: active provider selection, `auto`, `codex`, or `claude`; default `auto`.
 - `VIBE_STICK_BRIDGE_TOKEN`: shared token required whenever the bridge binds outside loopback, such as `0.0.0.0`.
 - `VIBE_STICK_MAX_RECORDING_AUDIO_BYTES`: max `/recording/audio` body size, default `2000000`.
 - `VIBE_STICK_RECORDING_USE_MAC_MIC`: set to `0` to disable Mac microphone fallback.
@@ -212,20 +212,10 @@ VIBE_STICK_TRANSCRIBE_TIMEOUT_SECONDS=120
 
 The command receives the recording session JSON on stdin and should print the final transcript to stdout.
 
-### Claude usage
-
-To see Claude 5H/7D usage, use `VIBE_STICK_PROVIDER=claude` or `VIBE_STICK_PROVIDER=auto`, set `VIBE_STICK_CLAUDE_USAGE=on`, and make sure Claude Code CLI has logged in through Terminal with `claude` and `/login`.
-
-- `VIBE_STICK_CLAUDE_USAGE`: set to `on` to fetch real Claude Code subscription usage; default `off`.
-- `CLAUDE_CODE_OAUTH_TOKEN`: optional Claude Code OAuth access token. If unset, the bridge tries local Claude Code keychain/file credentials.
-- `VIBE_STICK_CLAUDE_USAGE_INTERVAL_SECONDS`: Claude usage poll cadence, default `300`, minimum `30`.
-
-Claude usage support calls an undocumented Anthropic endpoint using the user's local Claude Code subscription credentials and client headers. It is opt-in, may break without notice, and never exposes the token or raw endpoint response through the bridge HTTP API. If no successful Claude usage snapshot has ever been captured, the StickS3 shows `--%`; after a successful snapshot, temporary usage refresh failures keep the last known values and mark them stale.
-
 ## Project layout
 
 ```text
-VibeStick/
+VibeStick-Codex/
   README.md
   README.zh-CN.md
   .env.example
@@ -257,8 +247,7 @@ idf.py build
 
 - This is a cleaned prototype, not a packaged Mac app or DMG.
 - The firmware targets M5Stack StickS3 only.
-- Codex quota is inferred from local Codex session JSONL events with `rate_limits`; it is not an official quota API.
-- Claude usage comes from an undocumented Claude Code OAuth endpoint and is disabled by default.
+- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows today's accumulated token count.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
 
 ## Contributing & Security

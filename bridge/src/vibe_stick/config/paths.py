@@ -8,7 +8,6 @@ APP_SUPPORT_DIR = (
 )
 STATE_PATH = APP_SUPPORT_DIR / "state.json"
 QUOTA_PATH = APP_SUPPORT_DIR / "quota.json"
-CLAUDE_QUOTA_PATH = APP_SUPPORT_DIR / "claude-quota.json"
 RECORDING_PATH = APP_SUPPORT_DIR / "recording.json"
 HUD_STATE_PATH = APP_SUPPORT_DIR / "hud-state.json"
 RECORDINGS_DIR = APP_SUPPORT_DIR / "Recordings"

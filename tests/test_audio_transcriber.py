@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from vibe_stick.audio import transcriber
+from vibe_stick.audio.recorder import _should_press_enter
 
 
 class _FakeResponse:
@@ -22,6 +23,10 @@ class _FakeResponse:
 
 
 class TranscriberConfigTests(unittest.TestCase):
+    @mock.patch.dict("os.environ", {"VIBE_STICK_AUTO_ENTER": "1"}, clear=False)
+    def test_explicit_submit_false_disables_auto_send(self) -> None:
+        self.assertFalse(_should_press_enter({"submit": False}))
+
     def test_load_asr_config_reads_vibestick_asr_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

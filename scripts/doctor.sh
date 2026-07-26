@@ -300,47 +300,6 @@ PY
   fi
 }
 
-check_claude_token() {
-  claude_usage="$(env_value VIBE_STICK_CLAUDE_USAGE "$ENV_PATH" | tr '[:upper:]' '[:lower:]')"
-  case "$claude_usage" in
-    1|true|yes|on)
-      if PYTHONPATH="$ROOT_DIR/bridge/src" python3 - "$ENV_PATH" <<'PY'
-import os
-import sys
-from pathlib import Path
-
-env_path = Path(sys.argv[1])
-
-def load_dotenv(path):
-    try:
-        lines = path.read_text().splitlines()
-    except OSError:
-        return
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        value = value.strip().strip("\"'")
-        os.environ.setdefault(key.strip(), value)
-
-load_dotenv(env_path)
-from vibe_stick.claude.usage import resolve_token
-
-raise SystemExit(0 if resolve_token() else 1)
-PY
-      then
-        pass "Claude usage is on and an OAuth token can be resolved: yes."
-      else
-        warn "Claude usage is on but an OAuth token can be resolved: no."
-      fi
-      ;;
-    *)
-      pass "Claude usage is off; token resolution skipped."
-      ;;
-  esac
-}
-
 check_python
 check_esp_idf
 check_dotenv
@@ -348,7 +307,6 @@ check_secrets
 check_token_match
 check_bridge_health
 check_asr
-check_claude_token
 
 printf 'INFO macOS permissions: grant Microphone permission for recording and Accessibility permission for the bridge runner/terminal that performs paste injection.\n'
 printf 'SUMMARY pass=%s warn=%s fail=%s\n' "$PASS_COUNT" "$WARN_COUNT" "$FAIL_COUNT"

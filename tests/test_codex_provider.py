@@ -21,6 +21,9 @@ class CodexProviderTests(unittest.TestCase):
                 alert_timestamp=timestamp,
                 latest_event_timestamp=timestamp,
                 codex_online=True,
+                funds_balance="12.50",
+                today_spend="1.25",
+                today_tokens=5800000,
             )
         )
 
@@ -32,6 +35,9 @@ class CodexProviderTests(unittest.TestCase):
         self.assertEqual(observation.alert_type, "DONE")
         self.assertEqual(observation.alert_event_id, f"evt_{timestamp.astimezone().strftime('%Y%m%d_%H%M%S')}_done")
         self.assertEqual(observation.latest_event_timestamp, timestamp)
+        self.assertEqual(observation.funds_balance, "12.50")
+        self.assertEqual(observation.today_spend, "1.25")
+        self.assertEqual(observation.today_tokens, 5800000)
 
     def test_missing_codex_quota_maps_to_unknown_bars(self) -> None:
         observation = observation_from_local_codex(
