@@ -4,9 +4,9 @@ VibeStick v0.1.2 plays sounds only for key agent status changes on the home scre
 
 | State | Trigger | Sound |
 | --- | --- | --- |
-| Completed / 完成 | Codex or Claude reports `DONE`, `COMPLETED`, or `SUCCESS` | 880 Hz 80 ms, 40 ms gap, 1320 Hz 120 ms |
-| Error / 报错 | Codex or Claude reports `ERROR`, `FAILED`, or `FAILURE` | 240 Hz 100 ms, 60 ms gap, repeated 3 times |
-| Waiting for approval / 等待审批 | Codex or Claude reports `APPROVAL`, `WAITING_APPROVAL`, `PENDING_APPROVAL`, or `NEEDS_APPROVAL` | 600 Hz 100 ms, 60 ms gap, 800 Hz 100 ms |
+| Completed / 完成 | Codex reports `DONE`, `COMPLETED`, or `SUCCESS` | 880 Hz 80 ms, 40 ms gap, 1320 Hz 120 ms |
+| Error / 报错 | Codex reports `ERROR`, `FAILED`, or `FAILURE` | 240 Hz 100 ms, 60 ms gap, repeated 3 times |
+| Waiting for approval / 等待审批 | Codex reports `APPROVAL`, `WAITING_APPROVAL`, `PENDING_APPROVAL`, or `NEEDS_APPROVAL` | 600 Hz 100 ms, 60 ms gap, 800 Hz 100 ms |
 
 ## No Sound
 
@@ -20,7 +20,7 @@ These states and events do not play sounds:
 - Running.
 - Thinking.
 - Polling.
-- Provider switching.
+- Front-button usage refresh.
 - Quota refresh.
 - Quota stale.
 - Screen refresh.

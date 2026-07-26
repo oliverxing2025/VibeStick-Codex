@@ -31,6 +31,9 @@ class CodexState:
     quota_7d_remaining: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
+    funds_balance: str | None = None
+    today_spend: str | None = None
+    today_tokens: int | None = None
 
 
 @dataclass
@@ -44,6 +47,9 @@ class ProviderState:
     quota_7d_remaining: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
+    funds_balance: str | None = None
+    today_spend: str | None = None
+    today_tokens: int | None = None
 
 
 @dataclass
@@ -85,15 +91,17 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
     provider_data = data.get("provider", {})
     codex_data = data.get("codex", {})
     codex_data = codex_data if isinstance(codex_data, dict) else {}
+    if isinstance(provider_data, dict) and provider_data.get("id") == "codex" and not codex_data:
+        codex_data = provider_data
     alert_data = data.get("alert", {})
     alert_data = alert_data if isinstance(alert_data, dict) else {}
-    provider_state = _provider_state_from_dict(provider_data if isinstance(provider_data, dict) else {}, codex_data)
+    provider_state = _provider_state_from_dict(codex_data)
     return VibeStickState(
         time=now_time_text(),
         wifi=bool(data.get("wifi", True)),
         ble=bool(data.get("ble", False)),
         battery=data.get("battery"),
-        active_provider=str(data.get("active_provider") or provider_state.id),
+        active_provider="codex",
         provider=provider_state,
         codex=CodexState(
             status=AgentStatus(codex_data.get("status", AgentStatus.IDLE.value)),
@@ -102,6 +110,9 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
             quota_7d_remaining=codex_data.get("quota_7d_remaining"),
             quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
             quota_stale=bool(codex_data.get("quota_stale", False)),
+            funds_balance=_optional_text(codex_data.get("funds_balance")),
+            today_spend=_optional_text(codex_data.get("today_spend")),
+            today_tokens=_optional_int(codex_data.get("today_tokens")),
         ),
         alert=AlertState(
             event_id=str(alert_data.get("event_id") or ""),
@@ -111,20 +122,7 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
     )
 
 
-def _provider_state_from_dict(provider_data: dict[str, Any], codex_data: dict[str, Any]) -> ProviderState:
-    if provider_data:
-        return ProviderState(
-            id=str(provider_data.get("id") or "codex"),
-            display_name=str(provider_data.get("display_name") or "Codex"),
-            implemented=bool(provider_data.get("implemented", True)),
-            status=AgentStatus(provider_data.get("status", AgentStatus.IDLE.value)),
-            project=str(provider_data.get("project") or "vibestick"),
-            quota_5h_remaining=provider_data.get("quota_5h_remaining"),
-            quota_7d_remaining=provider_data.get("quota_7d_remaining"),
-            quota_updated_at=str(provider_data.get("quota_updated_at") or ""),
-            quota_stale=bool(provider_data.get("quota_stale", False)),
-        )
-
+def _provider_state_from_dict(codex_data: dict[str, Any]) -> ProviderState:
     return ProviderState(
         id="codex",
         display_name="Codex",
@@ -135,7 +133,26 @@ def _provider_state_from_dict(provider_data: dict[str, Any], codex_data: dict[st
         quota_7d_remaining=codex_data.get("quota_7d_remaining"),
         quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
         quota_stale=bool(codex_data.get("quota_stale", False)),
+        funds_balance=_optional_text(codex_data.get("funds_balance")),
+        today_spend=_optional_text(codex_data.get("today_spend")),
+        today_tokens=_optional_int(codex_data.get("today_tokens")),
     )
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def default_state() -> VibeStickState:
@@ -146,6 +163,9 @@ def default_state() -> VibeStickState:
         quota_7d_remaining=None,
         quota_updated_at="",
         quota_stale=False,
+        funds_balance=None,
+        today_spend=None,
+        today_tokens=None,
     )
     return VibeStickState(
         time=now_time_text(),
@@ -163,6 +183,9 @@ def default_state() -> VibeStickState:
             quota_7d_remaining=codex.quota_7d_remaining,
             quota_updated_at=codex.quota_updated_at,
             quota_stale=codex.quota_stale,
+            funds_balance=codex.funds_balance,
+            today_spend=codex.today_spend,
+            today_tokens=codex.today_tokens,
         ),
         codex=codex,
         alert=AlertState(event_id="", type=AlertType.NONE, message=""),

@@ -17,6 +17,7 @@ from typing import Any
 from vibe_stick.audio.transcriber import TranscriptionAdapter
 from vibe_stick.config.paths import RECORDINGS_DIR
 from vibe_stick.desktop.hud import hide_hud, show_hud
+from vibe_stick.desktop.codex_control import CodexDesktopController
 from vibe_stick.paste.input_injector import MacPasteInjector
 
 MIN_AUDIO_DURATION_SECONDS = 0.7
@@ -67,11 +68,13 @@ class RecordingController:
         self.path = path
         self.transcriber = TranscriptionAdapter()
         self.paste_injector = MacPasteInjector()
+        self.codex_controller = CodexDesktopController()
         self.audio_recorder = MacMicRecorder()
         self.session = self._load()
 
     def start(self, request: dict[str, Any] | None = None) -> RecordingSession:
         request = request or {}
+        self.codex_controller.open_or_focus()
         requested_source = str(request.get("audio_source") or request.get("source") or "")
         requested_session_id = _requested_session_id(request)
         self.session = RecordingSession(
@@ -198,7 +201,7 @@ class RecordingController:
                 self._save_stop_result()
                 return self.session
         should_paste = bool(request.get("paste", True))
-        press_enter = _env_bool("VIBE_STICK_AUTO_ENTER", default=False)
+        press_enter = _should_press_enter(request)
         show_hud("transcribing")
 
         if not explicit_text:
@@ -273,6 +276,8 @@ class RecordingController:
                 self._save_stop_result()
                 return self.session
             if should_paste:
+                self.codex_controller.open_or_focus()
+                time.sleep(0.18)
                 paste = self.paste_injector.paste(transcript.text, press_enter=press_enter)
                 self.session.pasted = paste.success
                 self.session.status = "pasted" if paste.success else "paste_failed"
@@ -337,6 +342,12 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _should_press_enter(request: dict[str, Any]) -> bool:
+    if "submit" in request:
+        return bool(request.get("submit"))
+    return _env_bool("VIBE_STICK_AUTO_ENTER", default=False)
 
 
 def _wav_metrics(audio_file: str) -> AudioMetrics | None:

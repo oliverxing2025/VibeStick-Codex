@@ -2,33 +2,29 @@
 
 [English README](README.md)
 
-![VibeStick 首页，显示 Codex 和 Claude 状态](assets/brand/home-screen-preview.png)
-
 ![VibeStick 语音输入流程，显示 StickS3 录音状态和 Mac HUD](assets/brand/voice-input-preview.png)
 
-VibeStick 把 M5Stack StickS3 变成一个桌面 AI agent 小终端：显示状态、5H/7D 用量、提醒音，并支持长按说话后自动转写粘贴到 Mac。
+VibeStick 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
 
-VibeStick 面向 M5Stack StickS3，不是 M5Stack 官方项目。Codex、Claude 等第三方 agent 名称只用于说明本地兼容工具和集成。
+本分支面向 M5Stack StickS3，只集成本地 Codex；不是 M5Stack 或 OpenAI 官方项目。
 
 ## 开始前的准备
 
 - [ ] M5 StickS3｜一根 USB-C 数据线｜一台电脑（最好是Mac）
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
 -  语音转写API key 推荐 SiliconFlow：<https://cloud.siliconflow.cn/i/7ZCoy9fU>。国内直连、有免费额度、OpenAI 兼容；演示视频用的就是 SiliconFlow。可改用其他 OpenAI 兼容服务的 `base_url` 和模型名称。
--  如要显示 Claude 5H/7D 用量（该功能默认关闭）。需要 Claude Code CLI（在终端运行 `claude` 后执行 `/login`），并在 `.env` 中设置 `VIBE_STICK_CLAUDE_USAGE=on`。
 
 
 ## 安装
 
-你可以手动执行，也可以交给 AI 编程 agent，例如 Claude Code 和 Codex。
+你可以手动执行，也可以交给 Codex。
 
 > 说明：标 👤 的步骤是需要人亲自动手的物理操作，例如插线、长按/短按电源键、在系统设置里授权。AI agent 请按顺序执行 shell 步骤，执行到 👤 步骤时暂停，让用户完成后再继续。
 
-1. 克隆仓库并创建本地配置文件：
+1. 进入本地工程并创建配置文件：
 
 ```sh
-git clone https://github.com/GaryGaryyy/VibeStick.git
-cd VibeStick
+cd VibeStick-Codex
 ./scripts/setup.sh
 ```
 
@@ -99,11 +95,16 @@ ls /dev/cu.*
 ./scripts/doctor.sh
 ```
 
-尽量让必须项全部 PASS。然后看一眼 StickS3：如果本机 provider 数据可用，Codex / Claude 状态和 5H / 7D 应该出现真实值。
+尽量让必须项全部 PASS。然后看一眼 StickS3：顶部应显示 Wi-Fi、时间和电量，中间显示 Codex 状态，下面显示 `FUNDS / TODAY / TOKEN`。
 
-如果 Codex 已经能用、而 Claude 那栏显示 `--%`，这是正常的：Claude 用量默认关闭（更安全）；如需显示，请设置 `VIBE_STICK_CLAUDE_USAGE=on`，并确保 Claude Code 已通过 `claude` 和 `/login` 登录。
+11. 👤 测试正面蓝键和侧键：
 
-11. 👤 打开任意文本框，长按正面蓝键说话，松开后 VibeStick 应自动转写并粘贴。
+- 正面蓝键短按：打开 Codex 或把 Codex 窗口带到前台；等待确认时发送允许。
+- 正面蓝键双击：刷新 `FUNDS / TODAY / TOKEN`。
+- 正面蓝键长按：录音；松开后转写并填入 Codex，等待手动发送。
+- 侧键短按：发送当前输入。
+- 侧键双击：清空当前输入框中的文本。
+- 侧键长按：新建 Codex 对话。
 
 开发调试时可以用 `./scripts/dev.sh` 替代 `./scripts/install.sh`，它会在当前终端里运行 bridge。
 
@@ -161,7 +162,6 @@ open -e .env
 
 - `VIBE_STICK_PROJECT_ROOT`：本地 Codex session 观察路径。
 - `VIBE_STICK_PROJECT_NAME`：可选显示名称。
-- `VIBE_STICK_PROVIDER`：当前 provider，`auto`、`codex` 或 `claude`；默认 `auto`。
 - `VIBE_STICK_BRIDGE_TOKEN`：bridge 绑定到非 loopback 地址时必需的共享 token，例如 `0.0.0.0`。
 - `VIBE_STICK_MAX_RECORDING_AUDIO_BYTES`：`/recording/audio` 最大请求体大小，默认 `2000000`。
 - `VIBE_STICK_RECORDING_USE_MAC_MIC`：设为 `0` 可关闭 Mac 麦克风兜底。
@@ -210,20 +210,10 @@ VIBE_STICK_TRANSCRIBE_TIMEOUT_SECONDS=120
 
 这个命令会从 stdin 收到录音 session JSON，并应把最终转写文本打印到 stdout。
 
-### Claude 用量
-
-想显示 Claude 5H/7D 用量，请使用 `VIBE_STICK_PROVIDER=claude` 或 `VIBE_STICK_PROVIDER=auto`，设置 `VIBE_STICK_CLAUDE_USAGE=on`，并确保 Claude Code CLI 已在终端通过 `claude` 和 `/login` 登录。
-
-- `VIBE_STICK_CLAUDE_USAGE`：设为 `on` 后获取真实 Claude Code 订阅用量；默认 `off`。
-- `CLAUDE_CODE_OAUTH_TOKEN`：可选 Claude Code OAuth access token。未设置时，bridge 会尝试读取本机 Claude Code keychain / 文件凭据。
-- `VIBE_STICK_CLAUDE_USAGE_INTERVAL_SECONDS`：Claude 用量轮询间隔，默认 `300`，最小 `30`。
-
-Claude usage 会使用用户本机 Claude Code 订阅凭据和 client headers 调用未公开的 Anthropic endpoint。它是 opt-in，可能随时失效；bridge HTTP API 不会暴露 token 或原始 endpoint 响应。如果从未成功抓取过 Claude usage，StickS3 会显示 `--%`；成功抓取后，临时刷新失败会保留上一次值并标记 stale。
-
 ## 项目结构
 
 ```text
-VibeStick/
+VibeStick-Codex/
   README.md
   README.zh-CN.md
   .env.example
@@ -255,8 +245,7 @@ idf.py build
 
 - 这是整理后的原型，不是打包好的 Mac app 或 DMG。
 - 固件只面向 M5Stack StickS3。
-- Codex quota 来自本地 Codex session JSONL 里的 `rate_limits`，不是官方 quota API。
-- Claude usage 来自未公开的 Claude Code OAuth endpoint，默认关闭。
+- `FUNDS` 显示 Codex 当前额度剩余百分比，`TODAY` 显示对应的用量消耗百分比，`TOKEN` 显示今天累计 Token。
 - ASR 可靠性取决于麦克风采集、上传 PCM 质量、provider 可达性和模型配置。
 
 ## 贡献与安全

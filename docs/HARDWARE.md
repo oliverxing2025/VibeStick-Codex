@@ -9,8 +9,8 @@ The project does not currently claim support for other devices because the UI la
 ## Hardware Used
 
 - Screen: LVGL UI on the StickS3 display.
-- Blue front button: push-to-talk recording.
-- Side button: provider switching.
+- Blue front button: focus Codex / approve, double-click to refresh usage, or hold for push-to-talk transcription without auto-submit.
+- Side button: short-press to send, double-click to clear the current input text, or hold for a new chat.
 - Microphone: StickS3 microphone captured as 16 kHz / 16-bit / mono PCM.
 - Speaker: ES8311 / I2S playback for generated agent status tones.
 - Wi-Fi: HTTP communication with the Mac bridge on a 2.4 GHz Wi-Fi network. StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.

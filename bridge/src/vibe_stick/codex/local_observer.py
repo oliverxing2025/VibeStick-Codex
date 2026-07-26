@@ -34,6 +34,9 @@ class LocalCodexObservation:
     latest_event_timestamp: datetime | None = None
     latest_session_path: str = ""
     codex_online: bool = False
+    funds_balance: str | None = None
+    today_spend: str | None = None
+    today_tokens: int | None = None
 
 
 def observe_codex(project_root: Path) -> LocalCodexObservation:
@@ -45,9 +48,14 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     latest_event: tuple[datetime, str, str] | None = None
     latest_alert: tuple[datetime, AgentStatus, str, str] | None = None
     latest_quota: tuple[datetime, QuotaSnapshot] | None = None
+    latest_funds: tuple[datetime, str] | None = None
+    today_tokens = 0
+    today_token_data_found = False
+    local_today = datetime.now().astimezone().date()
     latest_session_path = ""
 
     for session_path in _session_files():
+        session_tokens: tuple[datetime, int] | None = None
         latest_session_path = latest_session_path or str(session_path)
         for event in _tail_json_events(session_path):
             timestamp = _parse_timestamp(event.get("timestamp"))
@@ -75,11 +83,26 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
             if quota is not None and (latest_quota is None or timestamp > latest_quota[0]):
                 latest_quota = (timestamp, quota)
 
+            funds = _funds_from_payload(payload)
+            if funds is not None and (latest_funds is None or timestamp > latest_funds[0]):
+                latest_funds = (timestamp, funds)
+
+            tokens = _total_tokens_from_payload(payload)
+            if (
+                tokens is not None
+                and timestamp.astimezone().date() == local_today
+                and (session_tokens is None or timestamp > session_tokens[0])
+            ):
+                session_tokens = (timestamp, tokens)
+
             alert = _alert_from_payload(candidate_type, payload)
             if alert is not None:
                 alert_status, alert_kind, message = alert
                 if latest_alert is None or timestamp > latest_alert[0]:
                     latest_alert = (timestamp, alert_status, alert_kind, message)
+        if session_tokens is not None:
+            today_tokens += session_tokens[1]
+            today_token_data_found = True
 
     if latest_cwd is not None:
         project = _project_name_from_path(latest_cwd)
@@ -87,7 +110,11 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     quota_snapshot = latest_quota[1] if latest_quota else None
     if not codex_online:
         status = AgentStatus.OFFLINE
-    elif latest_alert and now - latest_alert[0] <= ALERT_ACTIVITY_WINDOW:
+    elif (
+        latest_alert
+        and now - latest_alert[0] <= ALERT_ACTIVITY_WINDOW
+        and (latest_event is None or latest_alert[0] >= latest_event[0])
+    ):
         status = latest_alert[1]
     elif latest_event and now - latest_event[0] <= RUNNING_ACTIVITY_WINDOW:
         status = AgentStatus.RUNNING
@@ -101,6 +128,9 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         quota_found=quota_snapshot is not None,
         latest_session_path=latest_session_path,
         codex_online=codex_online,
+        funds_balance=latest_funds[1] if latest_funds else None,
+        today_spend=_configured_today_spend(),
+        today_tokens=today_tokens if today_token_data_found else None,
     )
     if latest_alert and status == latest_alert[1]:
         observation.alert_timestamp = latest_alert[0]
@@ -163,6 +193,39 @@ def _remaining_percent(used_percent: object) -> int | None:
     return max(0, min(100, int(round(100.0 - used))))
 
 
+def _funds_from_payload(payload: dict[str, Any]) -> str | None:
+    if payload.get("type") != "token_count":
+        return None
+    rate_limits = payload.get("rate_limits")
+    credits = rate_limits.get("credits") if isinstance(rate_limits, dict) else None
+    if not isinstance(credits, dict):
+        return None
+    balance = credits.get("balance")
+    if balance is None:
+        return None
+    text = str(balance).strip()
+    return text or None
+
+
+def _total_tokens_from_payload(payload: dict[str, Any]) -> int | None:
+    if payload.get("type") != "token_count":
+        return None
+    info = payload.get("info")
+    usage = info.get("total_token_usage") if isinstance(info, dict) else None
+    value = usage.get("total_tokens") if isinstance(usage, dict) else None
+    if isinstance(value, bool):
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _configured_today_spend() -> str | None:
+    value = os.environ.get("VIBE_STICK_TODAY_SPEND", "").strip()
+    return value or None
+
+
 def _alert_from_payload(
     payload_type: str,
     payload: dict[str, Any],
@@ -214,6 +277,8 @@ def _codex_process_running() -> bool:
     for line in result.stdout.splitlines():
         lower = line.lower()
         if "/applications/codex.app/" in lower:
+            return True
+        if "/applications/chatgpt.app/" in lower:
             return True
         if "codex app-server" in lower:
             return True

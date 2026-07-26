@@ -60,9 +60,11 @@ typedef enum {
     VIBE_STICK_EVENT_POLL_STATE,
     VIBE_STICK_EVENT_SHORT_PRESS,
     VIBE_STICK_EVENT_DOUBLE_CLICK,
+    VIBE_STICK_EVENT_SIDE_SHORT,
+    VIBE_STICK_EVENT_SIDE_DOUBLE,
+    VIBE_STICK_EVENT_SIDE_LONG,
     VIBE_STICK_EVENT_LONG_START,
     VIBE_STICK_EVENT_LONG_STOP,
-    VIBE_STICK_EVENT_PROVIDER_NEXT,
 } agent_event_type_t;
 
 typedef struct {
@@ -71,7 +73,6 @@ typedef struct {
 
 typedef enum {
     PROVIDER_CODEX = 0,
-    PROVIDER_CLAUDE = 1,
     PROVIDER_COUNT,
 } agent_provider_t;
 
@@ -81,8 +82,6 @@ typedef struct {
     const char *display_name;
     const lv_image_dsc_t *icon;
     lv_color_t accent_color;
-    bool enabled;
-    bool implemented;
 } agent_provider_config_t;
 
 typedef struct {
@@ -100,6 +99,10 @@ typedef struct {
     bool quota_7d_valid;
     char quota_updated_at[8];
     bool quota_stale;
+    char funds_balance[20];
+    char today_spend[20];
+    int today_tokens;
+    bool today_tokens_valid;
     char alert_event_id[56];
     char alert_type[24];
     char alert_message[80];
@@ -114,6 +117,10 @@ typedef struct {
     bool quota_7d_valid;
     char quota_updated_at[8];
     bool quota_stale;
+    char funds_balance[20];
+    char today_spend[20];
+    int today_tokens;
+    bool today_tokens_valid;
 } provider_display_state_t;
 
 typedef struct {
@@ -127,6 +134,7 @@ static SemaphoreHandle_t s_lvgl_lock;
 static bool s_wifi_connected;
 static bool s_recording_overlay_visible;
 static bool s_long_press_active;
+static bool s_side_long_press_active;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
@@ -134,6 +142,7 @@ static char s_recording_session_id[40];
 
 static lv_display_t *s_display;
 static lv_obj_t *s_wifi_label;
+static lv_obj_t *s_time_label;
 static lv_obj_t *s_battery_label;
 static lv_obj_t *s_battery_icon;
 static lv_obj_t *s_battery_fill;
@@ -143,13 +152,9 @@ static lv_obj_t *s_provider_icon;
 static lv_obj_t *s_provider_label;
 static lv_obj_t *s_status_dot;
 static lv_obj_t *s_status_label;
-static lv_obj_t *s_quota_5h_title_label;
-static lv_obj_t *s_quota_7d_title_label;
-static lv_obj_t *s_quota_5h_bar;
-static lv_obj_t *s_quota_7d_bar;
-static lv_obj_t *s_quota_5h_label;
-static lv_obj_t *s_quota_7d_label;
-static lv_obj_t *s_quota_status_label;
+static lv_obj_t *s_funds_value_label;
+static lv_obj_t *s_today_value_label;
+static lv_obj_t *s_token_value_label;
 static lv_obj_t *s_recording_overlay;
 static lv_obj_t *s_recording_wave_group;
 static lv_obj_t *s_recording_wave_bars[5];
@@ -171,6 +176,10 @@ static agent_state_t s_state = {
     .quota_7d_valid = false,
     .quota_updated_at = "",
     .quota_stale = false,
+    .funds_balance = "",
+    .today_spend = "",
+    .today_tokens = 0,
+    .today_tokens_valid = false,
     .alert_event_id = "",
     .alert_type = "NONE",
     .alert_message = "",
@@ -186,16 +195,10 @@ static provider_display_state_t s_provider_states[PROVIDER_COUNT] = {
         .quota_7d_valid = false,
         .quota_updated_at = "",
         .quota_stale = false,
-    },
-    [PROVIDER_CLAUDE] = {
-        .status = "OFFLINE",
-        .project = "vibestick",
-        .quota_5h = 0,
-        .quota_7d = 0,
-        .quota_5h_valid = false,
-        .quota_7d_valid = false,
-        .quota_updated_at = "",
-        .quota_stale = false,
+        .funds_balance = "",
+        .today_spend = "",
+        .today_tokens = 0,
+        .today_tokens_valid = false,
     },
 };
 
@@ -209,22 +212,10 @@ static const agent_provider_config_t s_provider_configs[] = {
         .display_name = "Codex",
         .icon = &vibe_stick_provider_codex_icon_40,
         .accent_color = LV_COLOR_MAKE(0x4d, 0x82, 0xff),
-        .enabled = true,
-        .implemented = true,
-    },
-    {
-        .id = PROVIDER_CLAUDE,
-        .key = "claude",
-        .display_name = "Claude",
-        .icon = &vibe_stick_provider_claude_icon_40,
-        .accent_color = LV_COLOR_MAKE(0xd9, 0x77, 0x57),
-        .enabled = true,
-        .implemented = true,
     },
 };
 
 static agent_provider_t s_current_provider = PROVIDER_CODEX;
-static bool s_provider_manually_selected;
 
 static const lv_point_precise_t s_battery_bolt_points[] = {
     {3, 0},
@@ -298,38 +289,6 @@ static bool set_current_provider_from_key(const char *key)
         return true;
     }
     return false;
-}
-
-static agent_provider_t next_enabled_provider(agent_provider_t current)
-{
-    const size_t count = sizeof(s_provider_configs) / sizeof(s_provider_configs[0]);
-    size_t current_index = 0;
-    for (size_t i = 0; i < count; ++i) {
-        if (s_provider_configs[i].id == current) {
-            current_index = i;
-            break;
-        }
-    }
-    for (size_t offset = 1; offset <= count; ++offset) {
-        const size_t candidate_index = (current_index + offset) % count;
-        if (s_provider_configs[candidate_index].enabled) {
-            return s_provider_configs[candidate_index].id;
-        }
-    }
-    return PROVIDER_CODEX;
-}
-
-static void switch_provider(void)
-{
-    if (s_recording_overlay_visible) {
-        ESP_LOGI(TAG, "provider switch ignored while overlay is visible");
-        return;
-    }
-    s_current_provider = next_enabled_provider(s_current_provider);
-    s_provider_manually_selected = true;
-    const agent_provider_config_t *provider = current_provider_config();
-    ESP_LOGI(TAG, "provider switched to %s", provider->key);
-    render_state();
 }
 
 static void lvgl_lock(void)
@@ -498,19 +457,6 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t 
     return label;
 }
 
-static lv_obj_t *make_bar(lv_obj_t *parent, int32_t width)
-{
-    lv_obj_t *bar = lv_bar_create(parent);
-    lv_obj_set_size(bar, width, 5);
-    lv_bar_set_range(bar, 0, 100);
-    lv_obj_set_style_radius(bar, 3, 0);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0x2a2d33), 0);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xf4f5f7), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(bar, 3, LV_PART_INDICATOR);
-    return bar;
-}
-
 static lv_obj_t *make_plain_obj(lv_obj_t *parent, int32_t w, int32_t h,
                                 lv_color_t color, lv_opa_t opa, int32_t radius)
 {
@@ -527,30 +473,30 @@ static void create_provider_icon(lv_obj_t *parent)
 {
     s_provider_icon = lv_image_create(parent);
     lv_image_set_src(s_provider_icon, current_provider_config()->icon);
-    lv_obj_align(s_provider_icon, LV_ALIGN_TOP_LEFT, 18, 52);
+    lv_obj_align(s_provider_icon, LV_ALIGN_TOP_LEFT, 10, 37);
 }
 
 static const char *status_text_for(const char *status)
 {
     if (strcmp(status, "RUNNING") == 0) {
-        return "运行中";
+        return "进行中";
     }
     if (strcmp(status, "DONE") == 0) {
         return "已完成";
     }
     if (strcmp(status, "APPROVAL") == 0) {
-        return "待确认";
+        return "需要确认";
     }
     if (strcmp(status, "ERROR") == 0) {
-        return "出错";
+        return "错误";
     }
     if (strcmp(status, "OFFLINE") == 0) {
         return "离线";
     }
     if (strcmp(status, "IDLE") == 0 || strcmp(status, "UNKNOWN") == 0) {
-        return "待命";
+        return "待命中";
     }
-    return "待命";
+    return "待命中";
 }
 
 static void set_battery_ui(int battery_value, bool charging, bool usb_powered)
@@ -630,21 +576,57 @@ static void start_recording_wave(void)
     }
 }
 
+static lv_obj_t *make_fullscreen_overlay(lv_obj_t *parent)
+{
+    lv_obj_t *overlay = lv_obj_create(parent);
+    lv_obj_set_size(overlay, LCD_H_RES, LCD_V_RES);
+    lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_radius(overlay, 0, 0);
+    lv_obj_set_style_bg_color(overlay, lv_color_hex(0x050608), 0);
+    lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(overlay, 0, 0);
+    lv_obj_set_style_pad_all(overlay, 0, 0);
+    return overlay;
+}
+
+static lv_obj_t *make_metric_card(lv_obj_t *screen, int32_t y, const char *title,
+                                  lv_color_t value_color, lv_obj_t **value_label)
+{
+    lv_obj_t *card = make_plain_obj(screen, LCD_H_RES - 16, 40,
+                                    lv_color_hex(0x101216), LV_OPA_COVER, 7);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x30343c), 0);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y);
+
+    lv_obj_t *title_label = make_label(card, title, &lv_font_montserrat_12,
+                                       lv_color_hex(0xa5aab3), 58, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 8, 0);
+    *value_label = make_label(card, "--", &lv_font_montserrat_16,
+                              value_color, 54, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_align(*value_label, LV_ALIGN_RIGHT_MID, -7, 0);
+    return card;
+}
+
 static void create_ui(void)
 {
     lv_obj_t *screen = lv_display_get_screen_active(s_display);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x050608), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
 
-    s_wifi_label = make_label(screen, "WiFi", &lv_font_montserrat_10, lv_color_hex(0xf3f4f6), 38, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_wifi_label, LV_ALIGN_TOP_LEFT, 9, 9);
+    s_wifi_label = make_label(screen, "WIFI", &lv_font_montserrat_10,
+                              lv_color_hex(0xf3f4f6), 36, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_wifi_label, LV_ALIGN_TOP_LEFT, 7, 8);
+    s_time_label = make_label(screen, "--:--", &lv_font_montserrat_10,
+                              lv_color_hex(0xf3f4f6), 42, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(s_time_label, LV_ALIGN_TOP_MID, 0, 8);
 
-    s_battery_label = make_label(screen, "--%", &lv_font_montserrat_10, lv_color_hex(0xf3f4f6), 28, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_align(s_battery_label, LV_ALIGN_TOP_RIGHT, -35, 9);
+    s_battery_label = make_label(screen, "", &lv_font_montserrat_10,
+                                 lv_color_hex(0xf3f4f6), 1, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_add_flag(s_battery_label, LV_OBJ_FLAG_HIDDEN);
     s_battery_icon = make_plain_obj(screen, 26, 13, lv_color_hex(0x000000), LV_OPA_TRANSP, 3);
     lv_obj_set_style_border_width(s_battery_icon, 1, 0);
     lv_obj_set_style_border_color(s_battery_icon, lv_color_hex(0xf3f4f6), 0);
-    lv_obj_align(s_battery_icon, LV_ALIGN_TOP_RIGHT, -7, 9);
+    lv_obj_align(s_battery_icon, LV_ALIGN_TOP_RIGHT, -8, 7);
     s_battery_fill = make_plain_obj(s_battery_icon, 1, 9, lv_color_hex(0xf3f4f6), LV_OPA_COVER, 2);
     lv_obj_align(s_battery_fill, LV_ALIGN_LEFT_MID, 2, 0);
     s_battery_bolt = lv_line_create(s_battery_icon);
@@ -666,49 +648,22 @@ static void create_ui(void)
     lv_obj_set_style_radius(s_status_dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(s_status_dot, lv_color_hex(0xf3f4f6), 0);
     lv_obj_set_style_bg_opa(s_status_dot, LV_OPA_COVER, 0);
-    lv_obj_align(s_status_dot, LV_ALIGN_TOP_LEFT, 72, 80);
 
-    s_provider_label = make_label(screen, "Codex", &lv_font_montserrat_16, lv_color_hex(0xf3f4f6), 60, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_provider_label, LV_ALIGN_TOP_LEFT, 72, 51);
+    s_provider_label = make_label(screen, "Codex", &lv_font_montserrat_16,
+                                  lv_color_hex(0xf3f4f6), 77, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(s_provider_label, LV_ALIGN_TOP_LEFT, 55, 37);
 
-    s_status_label = make_label(screen, "待命", FONT_CN, lv_color_hex(0xf3f4f6), 52, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 82, 73);
+    s_status_label = make_label(screen, "待命中", FONT_CN,
+                                lv_color_hex(0xf3f4f6), 66, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 71, 59);
+    lv_obj_align_to(s_status_dot, s_status_label, LV_ALIGN_OUT_LEFT_MID, -4, 0);
 
-    lv_obj_t *quota_wrap = make_plain_obj(screen, LCD_H_RES - 16, 104, lv_color_hex(0x0e1014), LV_OPA_COVER, 8);
-    lv_obj_set_style_border_width(quota_wrap, 1, 0);
-    lv_obj_set_style_border_color(quota_wrap, lv_color_hex(0x22252b), 0);
-    lv_obj_align(quota_wrap, LV_ALIGN_TOP_MID, 0, 118);
+    make_metric_card(screen, 91, "FUNDS:", lv_color_hex(0x8edb94), &s_funds_value_label);
+    make_metric_card(screen, 137, "TODAY:", lv_color_hex(0x8d94ee), &s_today_value_label);
+    make_metric_card(screen, 183, "TOKEN:", lv_color_hex(0xe7d86f), &s_token_value_label);
+    lv_obj_set_style_text_font(s_token_value_label, &lv_font_montserrat_14, 0);
 
-    lv_obj_t *divider = make_plain_obj(quota_wrap, 1, 72, lv_color_hex(0x242832), LV_OPA_COVER, 1);
-    lv_obj_align(divider, LV_ALIGN_CENTER, 0, 10);
-
-    s_quota_5h_title_label = make_label(screen, "5H --%", &lv_font_montserrat_12,
-                                        lv_color_hex(0x8a9099), 44, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(s_quota_5h_title_label, LV_ALIGN_TOP_LEFT, 17, 133);
-    s_quota_5h_label = make_label(screen, "--%", &lv_font_montserrat_20, lv_color_hex(0xf3f4f6), 54, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(s_quota_5h_label, LV_ALIGN_TOP_LEFT, 10, 153);
-    s_quota_5h_bar = make_bar(screen, 46);
-    lv_obj_align(s_quota_5h_bar, LV_ALIGN_TOP_LEFT, 16, 190);
-
-    s_quota_7d_title_label = make_label(screen, "7D --%", &lv_font_montserrat_12,
-                                        lv_color_hex(0x8a9099), 44, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(s_quota_7d_title_label, LV_ALIGN_TOP_RIGHT, -17, 133);
-    s_quota_7d_label = make_label(screen, "--%", &lv_font_montserrat_20, lv_color_hex(0xf3f4f6), 54, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(s_quota_7d_label, LV_ALIGN_TOP_RIGHT, -10, 153);
-    s_quota_7d_bar = make_bar(screen, 46);
-    lv_obj_align(s_quota_7d_bar, LV_ALIGN_TOP_RIGHT, -16, 190);
-    s_quota_status_label = make_label(screen, "WAIT", &lv_font_montserrat_10,
-                                      lv_color_hex(0x686e78), 84, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(s_quota_status_label, LV_ALIGN_TOP_MID, 0, 207);
-    lv_obj_add_flag(s_quota_status_label, LV_OBJ_FLAG_HIDDEN);
-
-    s_recording_overlay = lv_obj_create(screen);
-    lv_obj_set_size(s_recording_overlay, LCD_H_RES, LCD_V_RES);
-    lv_obj_align(s_recording_overlay, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(s_recording_overlay, 0, 0);
-    lv_obj_set_style_bg_color(s_recording_overlay, lv_color_hex(0x050608), 0);
-    lv_obj_set_style_bg_opa(s_recording_overlay, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_recording_overlay, 0, 0);
+    s_recording_overlay = make_fullscreen_overlay(screen);
     lv_obj_add_flag(s_recording_overlay, LV_OBJ_FLAG_HIDDEN);
 
     s_recording_wave_group = lv_obj_create(s_recording_overlay);
@@ -732,46 +687,55 @@ static void create_ui(void)
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -22);
 }
 
-static void set_quota_label(lv_obj_t *bar, lv_obj_t *label, int value, bool valid, lv_color_t accent_color)
+static void set_status_color(const agent_provider_config_t *provider, const char *status)
 {
-    lv_obj_set_style_bg_color(bar, valid ? accent_color : lv_color_hex(0x4b4f57), LV_PART_INDICATOR);
+    (void)provider;
+    lv_color_t color = lv_color_hex(0x9aa0aa);
+    if (strcmp(status, "RUNNING") == 0) {
+        color = lv_color_hex(0xf5c84c);
+    } else if (strcmp(status, "DONE") == 0) {
+        color = lv_color_hex(0x32d583);
+    } else if (strcmp(status, "APPROVAL") == 0) {
+        color = lv_color_hex(0xf5c84c);
+    } else if (strcmp(status, "IDLE") == 0 || strcmp(status, "UNKNOWN") == 0) {
+        color = lv_color_hex(0x9aa0aa);
+    } else if (strcmp(status, "ERROR") == 0 || strcmp(status, "OFFLINE") == 0) {
+        color = lv_color_hex(0xf04438);
+    }
+    lv_obj_set_style_bg_color(s_status_dot, color, 0);
+}
+
+static void set_percent_label(lv_obj_t *label, int value, bool valid)
+{
     if (!valid) {
-        lv_bar_set_value(bar, 0, LV_ANIM_OFF);
-        lv_label_set_text(label, "--%");
+        lv_label_set_text(label, "--");
         return;
     }
-    lv_bar_set_value(bar, value, LV_ANIM_OFF);
+    if (value < 0) {
+        value = 0;
+    } else if (value > 100) {
+        value = 100;
+    }
     char text[8];
     snprintf(text, sizeof(text), "%d%%", value);
     lv_label_set_text(label, text);
 }
 
-static void set_quota_title(lv_obj_t *label, const char *prefix, bool stale)
+static void set_token_label(lv_obj_t *label, int value, bool valid)
 {
-    if (stale) {
-        char text[8];
-        snprintf(text, sizeof(text), "%s*", prefix);
-        lv_label_set_text(label, text);
+    if (!valid) {
+        lv_label_set_text(label, "--");
+        return;
+    }
+    char text[16];
+    if (value >= 1000000) {
+        snprintf(text, sizeof(text), "%.1fM", (double)value / 1000000.0);
+    } else if (value >= 1000) {
+        snprintf(text, sizeof(text), "%.1fK", (double)value / 1000.0);
     } else {
-        lv_label_set_text(label, prefix);
+        snprintf(text, sizeof(text), "%d", value);
     }
-}
-
-static void set_status_color(const agent_provider_config_t *provider, const char *status)
-{
-    lv_color_t color = lv_color_hex(0x9aa0aa);
-    if (!provider->implemented) {
-        color = lv_color_hex(0x9aa0aa);
-    } else if (strcmp(status, "RUNNING") == 0 || strcmp(status, "DONE") == 0) {
-        color = provider->accent_color;
-    } else if (strcmp(status, "APPROVAL") == 0) {
-        color = lv_color_hex(0xcfd3da);
-    } else if (strcmp(status, "IDLE") == 0 || strcmp(status, "UNKNOWN") == 0) {
-        color = lv_color_hex(0x9aa0aa);
-    } else if (strcmp(status, "ERROR") == 0 || strcmp(status, "OFFLINE") == 0) {
-        color = lv_color_hex(0x686e78);
-    }
-    lv_obj_set_style_bg_color(s_status_dot, color, 0);
+    lv_label_set_text(label, text);
 }
 
 static void render_state(void)
@@ -779,13 +743,10 @@ static void render_state(void)
     lvgl_lock();
     const agent_provider_config_t *provider = current_provider_config();
     const provider_display_state_t *display_state = current_provider_display_state();
-    const bool implemented = provider->implemented;
-    const bool q5_valid = implemented && display_state->quota_5h_valid;
-    const bool q7_valid = implemented && display_state->quota_7d_valid;
-    const bool quota_stale = implemented && display_state->quota_stale;
-    const char *status_key = implemented ? display_state->status : "UNIMPLEMENTED";
+    const char *status_key = display_state->status;
 
-    lv_label_set_text(s_wifi_label, s_wifi_connected ? "WiFi" : "OFF");
+    lv_label_set_text(s_wifi_label, s_wifi_connected ? "WIFI" : "OFF");
+    lv_label_set_text(s_time_label, s_state.time[0] ? s_state.time : "--:--");
     lv_obj_set_style_text_color(s_wifi_label,
                                 s_wifi_connected ? lv_color_hex(0xf3f4f6) : lv_color_hex(0x686e78),
                                 0);
@@ -797,17 +758,16 @@ static void render_state(void)
         lv_obj_add_flag(s_provider_icon, LV_OBJ_FLAG_HIDDEN);
     }
     lv_label_set_text(s_provider_label, provider->display_name);
-    lv_obj_set_style_text_color(s_provider_label, provider->implemented ? lv_color_hex(0xf3f4f6) : lv_color_hex(0xd7d9de), 0);
-    lv_label_set_text(s_status_label, implemented ? status_text_for(display_state->status) : "待命");
+    lv_obj_set_style_text_color(s_provider_label, lv_color_hex(0xf3f4f6), 0);
+    lv_label_set_text(s_status_label, status_text_for(display_state->status));
     set_status_color(provider, status_key);
-    set_quota_title(s_quota_5h_title_label, "5H", quota_stale);
-    set_quota_title(s_quota_7d_title_label, "7D", quota_stale);
-    set_quota_label(s_quota_5h_bar, s_quota_5h_label, display_state->quota_5h,
-                    q5_valid, provider->accent_color);
-    set_quota_label(s_quota_7d_bar, s_quota_7d_label, display_state->quota_7d,
-                    q7_valid, provider->accent_color);
-    lv_label_set_text(s_quota_status_label, "");
-    lv_obj_add_flag(s_quota_status_label, LV_OBJ_FLAG_HIDDEN);
+    const bool quota_valid = display_state->quota_7d_valid || display_state->quota_5h_valid;
+    const int quota_remaining = display_state->quota_7d_valid
+        ? display_state->quota_7d : display_state->quota_5h;
+    set_percent_label(s_funds_value_label, quota_remaining, quota_valid);
+    set_percent_label(s_today_value_label, 100 - quota_remaining, quota_valid);
+    set_token_label(s_token_value_label, display_state->today_tokens,
+                    display_state->today_tokens_valid);
     lvgl_unlock();
 }
 
@@ -1072,6 +1032,9 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     cJSON *quota_5h = cJSON_GetObjectItemCaseSensitive(source, "quota_5h_remaining");
     cJSON *quota_7d = cJSON_GetObjectItemCaseSensitive(source, "quota_7d_remaining");
     cJSON *stale = cJSON_GetObjectItemCaseSensitive(source, "quota_stale");
+    cJSON *funds = cJSON_GetObjectItemCaseSensitive(source, "funds_balance");
+    cJSON *today = cJSON_GetObjectItemCaseSensitive(source, "today_spend");
+    cJSON *tokens = cJSON_GetObjectItemCaseSensitive(source, "today_tokens");
     int quota_value = 0;
     target->quota_5h_valid = json_percent_value(quota_5h, &quota_value);
     if (target->quota_5h_valid) {
@@ -1082,6 +1045,23 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
         target->quota_7d = quota_value;
     }
     target->quota_stale = cJSON_IsBool(stale) ? cJSON_IsTrue(stale) : false;
+    if (cJSON_IsString(funds) && funds->valuestring) {
+        strlcpy(target->funds_balance, funds->valuestring, sizeof(target->funds_balance));
+    } else {
+        target->funds_balance[0] = '\0';
+    }
+    if (cJSON_IsString(today) && today->valuestring) {
+        strlcpy(target->today_spend, today->valuestring, sizeof(target->today_spend));
+    } else {
+        target->today_spend[0] = '\0';
+    }
+    if (cJSON_IsNumber(tokens) && tokens->valuedouble >= 0) {
+        target->today_tokens = (int)tokens->valuedouble;
+        target->today_tokens_valid = true;
+    } else {
+        target->today_tokens = 0;
+        target->today_tokens_valid = false;
+    }
 }
 
 static void parse_provider_json(cJSON *state_root, cJSON *provider)
@@ -1093,9 +1073,7 @@ static void parse_provider_json(cJSON *state_root, cJSON *provider)
     }
     agent_provider_t provider_id = s_current_provider;
     if (provider_key[0] != '\0' && provider_from_key(provider_key, &provider_id)) {
-        if (!s_provider_manually_selected) {
-            s_current_provider = provider_id;
-        }
+        s_current_provider = provider_id;
     }
 
     provider_display_state_t *display_state = provider_display_state(provider_id);
@@ -1148,7 +1126,7 @@ static bool parse_state_json(const char *json)
     } else {
         char active_provider[16] = "";
         copy_json_string(state_root, "active_provider", active_provider, sizeof(active_provider));
-        if (active_provider[0] != '\0' && !s_provider_manually_selected) {
+        if (active_provider[0] != '\0') {
             set_current_provider_from_key(active_provider);
         }
     }
@@ -1367,7 +1345,8 @@ static void handle_recording_stop(void)
     vibe_audio_clear();
 
     show_recording_overlay("正在识别", "", true);
-    const char *body = "{\"event\":\"button_long_stop\",\"source\":\"sticks3\",\"paste\":true}";
+    const char *body =
+        "{\"event\":\"button_long_stop\",\"source\":\"sticks3\",\"paste\":true,\"submit\":false}";
     char response[1024] = {0};
     esp_err_t err = http_request_timeout("POST", VIBE_STICK_RECORDING_STOP_PATH, body, response, sizeof(response), 30000);
     bool recording_failed = false;
@@ -1455,7 +1434,31 @@ static void side_button_single_click_cb(void *button_handle, void *usr_data)
 {
     (void)button_handle;
     (void)usr_data;
-    queue_event(VIBE_STICK_EVENT_PROVIDER_NEXT);
+    queue_event(VIBE_STICK_EVENT_SIDE_SHORT);
+}
+
+static void side_button_double_click_cb(void *button_handle, void *usr_data)
+{
+    (void)button_handle;
+    (void)usr_data;
+    queue_event(VIBE_STICK_EVENT_SIDE_DOUBLE);
+}
+
+static void side_button_long_start_cb(void *button_handle, void *usr_data)
+{
+    (void)button_handle;
+    (void)usr_data;
+    s_side_long_press_active = true;
+}
+
+static void side_button_up_cb(void *button_handle, void *usr_data)
+{
+    (void)button_handle;
+    (void)usr_data;
+    if (s_side_long_press_active) {
+        s_side_long_press_active = false;
+        queue_event(VIBE_STICK_EVENT_SIDE_LONG);
+    }
 }
 
 static void button_long_start_cb(void *button_handle, void *usr_data)
@@ -1510,6 +1513,15 @@ static esp_err_t init_button(void)
     ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_SINGLE_CLICK, NULL,
                                                side_button_single_click_cb, NULL),
                         TAG, "side button single");
+    ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_DOUBLE_CLICK, NULL,
+                                               side_button_double_click_cb, NULL),
+                        TAG, "side button double");
+    ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_LONG_PRESS_START,
+                                               &long_press_args, side_button_long_start_cb, NULL),
+                        TAG, "side button long");
+    ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_PRESS_UP, NULL,
+                                               side_button_up_cb, NULL),
+                        TAG, "side button up");
     return ESP_OK;
 }
 
@@ -1532,20 +1544,26 @@ static void app_task(void *arg)
             poll_state();
             break;
         case VIBE_STICK_EVENT_SHORT_PRESS:
-            post_simple_event("button_short", NULL);
+            post_simple_event("front_short", NULL);
             break;
         case VIBE_STICK_EVENT_DOUBLE_CLICK:
-            post_simple_event("button_double", VIBE_STICK_QUOTA_REFRESH_PATH);
+            post_simple_event("front_double", VIBE_STICK_QUOTA_REFRESH_PATH);
             poll_state();
+            break;
+        case VIBE_STICK_EVENT_SIDE_SHORT:
+            post_simple_event("side_short", NULL);
+            break;
+        case VIBE_STICK_EVENT_SIDE_DOUBLE:
+            post_simple_event("side_double", NULL);
+            break;
+        case VIBE_STICK_EVENT_SIDE_LONG:
+            post_simple_event("side_long", NULL);
             break;
         case VIBE_STICK_EVENT_LONG_START:
             handle_recording_start();
             break;
         case VIBE_STICK_EVENT_LONG_STOP:
             handle_recording_stop();
-            break;
-        case VIBE_STICK_EVENT_PROVIDER_NEXT:
-            switch_provider();
             break;
         }
     }

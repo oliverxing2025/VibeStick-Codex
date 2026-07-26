@@ -1,6 +1,6 @@
 import unittest
 
-from vibe_stick.protocol.state import AgentStatus, ProviderState, default_state, state_from_dict
+from vibe_stick.protocol.state import state_from_dict
 
 
 class ProtocolStateTests(unittest.TestCase):
@@ -25,6 +25,9 @@ class ProtocolStateTests(unittest.TestCase):
                     "quota_5h_remaining": 66,
                     "quota_7d_remaining": 96,
                     "quota_updated_at": "09:38",
+                    "funds_balance": "9.20",
+                    "today_spend": None,
+                    "today_tokens": 5800000,
                 }
             }
         )
@@ -35,27 +38,24 @@ class ProtocolStateTests(unittest.TestCase):
         self.assertEqual(payload["provider"]["status"], "RUNNING")
         self.assertEqual(payload["provider"]["quota_5h_remaining"], 66)
         self.assertEqual(payload["codex"]["status"], "RUNNING")
+        self.assertEqual(payload["codex"]["funds_balance"], "9.20")
+        self.assertIsNone(payload["codex"]["today_spend"])
+        self.assertEqual(payload["provider"]["today_tokens"], 5800000)
 
-    def test_generic_provider_block_serializes_status_string(self) -> None:
-        state = default_state()
-        state.active_provider = "claude"
-        state.provider = ProviderState(
-            id="claude",
-            display_name="Claude",
-            implemented=True,
-            status=AgentStatus.ERROR,
-            project="VibeStick",
-            quota_5h_remaining=None,
-            quota_7d_remaining=None,
-            quota_updated_at="",
-            quota_stale=False,
+    def test_non_codex_saved_provider_is_normalized_to_codex(self) -> None:
+        state = state_from_dict(
+            {
+                "active_provider": "unsupported",
+                "provider": {"id": "unsupported", "status": "ERROR"},
+                "codex": {"status": "IDLE", "project": "VibeStick"},
+            }
         )
 
         payload = state.to_jsonable()
 
-        self.assertEqual(payload["active_provider"], "claude")
-        self.assertEqual(payload["provider"]["id"], "claude")
-        self.assertEqual(payload["provider"]["status"], "ERROR")
+        self.assertEqual(payload["active_provider"], "codex")
+        self.assertEqual(payload["provider"]["id"], "codex")
+        self.assertEqual(payload["provider"]["status"], "IDLE")
 
 
 if __name__ == "__main__":
