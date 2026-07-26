@@ -135,6 +135,8 @@ static bool s_wifi_connected;
 static bool s_recording_overlay_visible;
 static bool s_long_press_active;
 static bool s_side_long_press_active;
+static bool s_startup_active;
+static bool s_ignore_startup_button_release;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
@@ -160,6 +162,7 @@ static lv_obj_t *s_recording_wave_group;
 static lv_obj_t *s_recording_wave_bars[5];
 static lv_obj_t *s_recording_title;
 static lv_obj_t *s_recording_hint;
+static lv_obj_t *s_startup_screen;
 
 static agent_state_t s_state = {
     .time = "--:--",
@@ -607,6 +610,46 @@ static lv_obj_t *make_metric_card(lv_obj_t *screen, int32_t y, const char *title
     return card;
 }
 
+static void dismiss_startup_screen(void)
+{
+    lvgl_lock();
+    if (s_startup_screen) {
+        lv_obj_delete(s_startup_screen);
+        s_startup_screen = NULL;
+    }
+    s_startup_active = false;
+    lvgl_unlock();
+}
+
+static void create_startup_screen(lv_obj_t *screen)
+{
+    s_startup_screen = make_fullscreen_overlay(screen);
+    lv_obj_move_foreground(s_startup_screen);
+
+    lv_obj_t *icon = lv_image_create(s_startup_screen);
+    lv_image_set_src(icon, &vibe_stick_provider_codex_icon_40);
+    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -56);
+
+    lv_obj_t *title = make_label(s_startup_screen, "Codex", &lv_font_montserrat_20,
+                                 lv_color_hex(0xf4f7ff), 120, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -4);
+
+    lv_obj_t *subtitle = make_label(s_startup_screen, "VOICE ASSISTANT", &lv_font_montserrat_10,
+                                    lv_color_hex(0x27c9ff), 120, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(subtitle, LV_ALIGN_CENTER, 0, 22);
+
+    lv_obj_t *button_dot = make_plain_obj(s_startup_screen, 9, 9,
+                                          lv_color_hex(0x168cff), LV_OPA_COVER,
+                                          LV_RADIUS_CIRCLE);
+    lv_obj_align(button_dot, LV_ALIGN_BOTTOM_MID, 0, -45);
+
+    lv_obj_t *hint = make_label(s_startup_screen, "PRESS BLUE BUTTON",
+                                &lv_font_montserrat_10, lv_color_hex(0x8aa4c8),
+                                120, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -23);
+    s_startup_active = true;
+}
+
 static void create_ui(void)
 {
     lv_obj_t *screen = lv_display_get_screen_active(s_display);
@@ -685,6 +728,8 @@ static void create_ui(void)
     s_recording_hint = make_label(s_recording_overlay, "松开发送", FONT_CN,
                                   lv_color_hex(0x8b9098), 120, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -22);
+
+    create_startup_screen(screen);
 }
 
 static void set_status_color(const agent_provider_config_t *provider, const char *status)
@@ -1537,6 +1582,20 @@ static void app_task(void *arg)
             poll_state();
         }
         if (xQueueReceive(s_event_queue, &event, pdMS_TO_TICKS(100)) != pdTRUE) {
+            continue;
+        }
+        if (s_startup_active && event.type != VIBE_STICK_EVENT_POLL_STATE) {
+            if (event.type == VIBE_STICK_EVENT_SHORT_PRESS ||
+                event.type == VIBE_STICK_EVENT_DOUBLE_CLICK ||
+                event.type == VIBE_STICK_EVENT_LONG_START) {
+                s_ignore_startup_button_release =
+                    event.type == VIBE_STICK_EVENT_LONG_START;
+                dismiss_startup_screen();
+            }
+            continue;
+        }
+        if (s_ignore_startup_button_release && event.type == VIBE_STICK_EVENT_LONG_STOP) {
+            s_ignore_startup_button_release = false;
             continue;
         }
         switch (event.type) {

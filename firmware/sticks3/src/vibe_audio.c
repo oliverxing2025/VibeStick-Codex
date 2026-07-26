@@ -28,6 +28,7 @@
                          (VIBE_STICK_AUDIO_BITS_PER_SAMPLE / 8) * AUDIO_MAX_SECONDS)
 #define TASK_EXIT_WAIT_MS 800
 #define VIBE_STICK_SOUND_VOLUME 0.40f
+#define VIBE_STICK_DONE_SOUND_VOLUME_SCALE 0.30f
 #define VIBE_STICK_SOUND_FRAME_SAMPLES 160
 #define VIBE_STICK_SOUND_FADE_MS 8
 #define VIBE_STICK_SOUND_OUTPUT_VOLUME 85
@@ -246,7 +247,7 @@ static float sound_envelope(int sample_index, int total_samples)
     return 1.0f;
 }
 
-static esp_err_t write_sound_segment(const sound_segment_t *segment)
+static esp_err_t write_sound_segment(const sound_segment_t *segment, float volume_scale)
 {
     const int total_samples = (VIBE_STICK_AUDIO_SAMPLE_RATE * segment->duration_ms) / 1000;
     int samples_written = 0;
@@ -267,7 +268,7 @@ static esp_err_t write_sound_segment(const sound_segment_t *segment)
             float phase = VIBE_STICK_TWO_PI * (float)segment->freq_hz *
                           (float)sample_index / (float)VIBE_STICK_AUDIO_SAMPLE_RATE;
             float value = sinf(phase) * sound_envelope(sample_index, total_samples) *
-                          VIBE_STICK_SOUND_VOLUME * 32767.0f;
+                          VIBE_STICK_SOUND_VOLUME * volume_scale * 32767.0f;
             frame[i] = (int16_t)value;
         }
 
@@ -279,13 +280,14 @@ static esp_err_t write_sound_segment(const sound_segment_t *segment)
     return ESP_OK;
 }
 
-static esp_err_t play_sound_segments(const sound_segment_t *segments, size_t count)
+static esp_err_t play_sound_segments(const sound_segment_t *segments, size_t count,
+                                     float volume_scale)
 {
     for (size_t i = 0; i < count; ++i) {
-        ESP_RETURN_ON_ERROR(write_sound_segment(&segments[i]), TAG, "sound segment");
+        ESP_RETURN_ON_ERROR(write_sound_segment(&segments[i], volume_scale), TAG, "sound segment");
     }
     sound_segment_t tail = {.freq_hz = 0, .duration_ms = 20};
-    return write_sound_segment(&tail);
+    return write_sound_segment(&tail, volume_scale);
 }
 
 static const sound_segment_t *sound_segments_for(agent_sound_t sound, size_t *count)
@@ -467,7 +469,9 @@ esp_err_t vibe_audio_play_sound(agent_sound_t sound)
         err = init_codec(ESP_CODEC_DEV_TYPE_OUT, ESP_CODEC_DEV_WORK_MODE_DAC);
     }
     if (err == ESP_OK) {
-        err = play_sound_segments(segments, segment_count);
+        const float volume_scale =
+            sound == VIBE_STICK_SOUND_DONE ? VIBE_STICK_DONE_SOUND_VOLUME_SCALE : 1.0f;
+        err = play_sound_segments(segments, segment_count, volume_scale);
     }
 
     release_session_resources();
