@@ -29,6 +29,8 @@ from vibe_stick.protocol.state import (
     default_state,
     event_id,
     now_time_text,
+    now_date_text,
+    now_weekday_text,
     state_from_dict,
 )
 from vibe_stick.providers.base import ProviderObservation
@@ -56,6 +58,7 @@ class BridgeStateStore:
         quota = load_quota(QUOTA_PATH)
         self._state.codex.quota_5h_remaining = quota.quota_5h_remaining
         self._state.codex.quota_7d_remaining = quota.quota_7d_remaining
+        self._state.codex.quota_7d_reset_days = quota.quota_7d_reset_days
         self._state.codex.quota_updated_at = quota.quota_updated_at
         self._state.codex.quota_stale = quota.quota_stale
         self.recording = RecordingController(RECORDING_PATH)
@@ -66,6 +69,8 @@ class BridgeStateStore:
         with self._lock:
             self._refresh_providers_locked()
             self._state.time = now_time_text()
+            self._state.date = now_date_text()
+            self._state.weekday = now_weekday_text()
             self._save_state_locked()
             return self._state
 
@@ -181,6 +186,7 @@ class BridgeStateStore:
             refreshed = QuotaSnapshot(
                 quota_5h_remaining=observation.quota_5h_remaining,
                 quota_7d_remaining=observation.quota_7d_remaining,
+                quota_7d_reset_days=observation.quota_7d_reset_days,
                 quota_updated_at=observation.quota_updated_at,
                 quota_stale=observation.quota_stale,
             )
@@ -189,6 +195,7 @@ class BridgeStateStore:
             existing = QuotaSnapshot(
                 quota_5h_remaining=self._state.codex.quota_5h_remaining,
                 quota_7d_remaining=self._state.codex.quota_7d_remaining,
+                quota_7d_reset_days=self._state.codex.quota_7d_reset_days,
                 quota_updated_at=self._state.codex.quota_updated_at,
                 quota_stale=self._state.codex.quota_stale,
             )
@@ -201,6 +208,7 @@ class BridgeStateStore:
 
         observation.quota_5h_remaining = refreshed.quota_5h_remaining
         observation.quota_7d_remaining = refreshed.quota_7d_remaining
+        observation.quota_7d_reset_days = refreshed.quota_7d_reset_days
         observation.quota_updated_at = refreshed.quota_updated_at
         observation.quota_stale = refreshed.quota_stale
 
@@ -424,6 +432,7 @@ def _stale_quota(existing: QuotaSnapshot) -> QuotaSnapshot:
     return QuotaSnapshot(
         quota_5h_remaining=existing.quota_5h_remaining,
         quota_7d_remaining=existing.quota_7d_remaining,
+        quota_7d_reset_days=existing.quota_7d_reset_days,
         quota_updated_at=existing.quota_updated_at,
         quota_stale=True,
     )
@@ -446,6 +455,7 @@ def _codex_state_from_observation(observation: ProviderObservation) -> CodexStat
         project=observation.project,
         quota_5h_remaining=observation.quota_5h_remaining,
         quota_7d_remaining=observation.quota_7d_remaining,
+        quota_7d_reset_days=observation.quota_7d_reset_days,
         quota_updated_at=observation.quota_updated_at,
         quota_stale=observation.quota_stale,
         funds_balance=observation.funds_balance,
@@ -463,6 +473,7 @@ def _provider_state_from_observation(observation: ProviderObservation) -> Provid
         project=observation.project,
         quota_5h_remaining=observation.quota_5h_remaining,
         quota_7d_remaining=observation.quota_7d_remaining,
+        quota_7d_reset_days=observation.quota_7d_reset_days,
         quota_updated_at=observation.quota_updated_at,
         quota_stale=observation.quota_stale,
         funds_balance=observation.funds_balance,

@@ -34,6 +34,7 @@ def observation_from_local_codex(observation: LocalCodexObservation) -> Provider
         project=observation.project,
         quota_5h_remaining=quota.quota_5h_remaining if quota is not None else None,
         quota_7d_remaining=quota.quota_7d_remaining if quota is not None else None,
+        quota_7d_reset_days=quota.quota_7d_reset_days if quota is not None else None,
         quota_updated_at=quota.quota_updated_at if quota is not None else "",
         quota_stale=quota.quota_stale if quota is not None else False,
         funds_balance=observation.funds_balance,

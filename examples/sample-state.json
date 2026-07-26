@@ -8,6 +8,7 @@
     "project": "ai-signal",
     "quota_5h_remaining": 62,
     "quota_7d_remaining": 84,
+    "quota_7d_reset_days": 7,
     "quota_updated_at": "09:38",
     "quota_stale": false
   },
