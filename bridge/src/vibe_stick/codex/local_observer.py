@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 from dataclasses import dataclass
@@ -163,6 +164,7 @@ def _quota_from_payload(
 
     five_hour = None
     seven_day = None
+    seven_day_reset_days = None
     for window in ("primary", "secondary"):
         data = rate_limits.get(window)
         if not isinstance(data, dict):
@@ -173,6 +175,7 @@ def _quota_from_payload(
             five_hour = remaining
         elif minutes == 10080:
             seven_day = remaining
+            seven_day_reset_days = _days_until_reset(data.get("resets_at"), now)
 
     if five_hour is None and seven_day is None:
         return None
@@ -180,6 +183,7 @@ def _quota_from_payload(
     return QuotaSnapshot(
         quota_5h_remaining=five_hour,
         quota_7d_remaining=seven_day,
+        quota_7d_reset_days=seven_day_reset_days,
         quota_updated_at=timestamp.astimezone().strftime("%H:%M"),
         quota_stale=now - timestamp > QUOTA_STALE_AFTER,
     )
@@ -191,6 +195,15 @@ def _remaining_percent(used_percent: object) -> int | None:
     except (TypeError, ValueError):
         return None
     return max(0, min(100, int(round(100.0 - used))))
+
+
+def _days_until_reset(resets_at: object, now: datetime) -> int | None:
+    try:
+        reset_timestamp = float(resets_at)
+    except (TypeError, ValueError):
+        return None
+    seconds_left = reset_timestamp - now.timestamp()
+    return max(0, int(math.ceil(seconds_left / 86400.0)))
 
 
 def _funds_from_payload(payload: dict[str, Any]) -> str | None:

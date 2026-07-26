@@ -29,6 +29,7 @@ class CodexState:
     project: str = "vibestick"
     quota_5h_remaining: int | None = None
     quota_7d_remaining: int | None = None
+    quota_7d_reset_days: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
     funds_balance: str | None = None
@@ -45,6 +46,7 @@ class ProviderState:
     project: str = "vibestick"
     quota_5h_remaining: int | None = None
     quota_7d_remaining: int | None = None
+    quota_7d_reset_days: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
     funds_balance: str | None = None
@@ -62,6 +64,8 @@ class AlertState:
 @dataclass
 class VibeStickState:
     time: str
+    date: str
+    weekday: str
     wifi: bool
     ble: bool
     battery: int | None
@@ -80,7 +84,16 @@ class VibeStickState:
 
 
 def now_time_text() -> str:
-    return datetime.now().strftime("%H:%M")
+    return datetime.now().strftime("%H:%M:%S")
+
+
+def now_date_text() -> str:
+    now = datetime.now()
+    return f"{now.strftime('%b').upper()} {now.day}"
+
+
+def now_weekday_text() -> str:
+    return datetime.now().strftime("%A")
 
 
 def event_id(prefix: str) -> str:
@@ -98,6 +111,8 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
     provider_state = _provider_state_from_dict(codex_data)
     return VibeStickState(
         time=now_time_text(),
+        date=now_date_text(),
+        weekday=now_weekday_text(),
         wifi=bool(data.get("wifi", True)),
         ble=bool(data.get("ble", False)),
         battery=data.get("battery"),
@@ -108,6 +123,7 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
             project=str(codex_data.get("project") or "vibestick"),
             quota_5h_remaining=codex_data.get("quota_5h_remaining"),
             quota_7d_remaining=codex_data.get("quota_7d_remaining"),
+            quota_7d_reset_days=_optional_int(codex_data.get("quota_7d_reset_days")),
             quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
             quota_stale=bool(codex_data.get("quota_stale", False)),
             funds_balance=_optional_text(codex_data.get("funds_balance")),
@@ -131,6 +147,7 @@ def _provider_state_from_dict(codex_data: dict[str, Any]) -> ProviderState:
         project=str(codex_data.get("project") or "vibestick"),
         quota_5h_remaining=codex_data.get("quota_5h_remaining"),
         quota_7d_remaining=codex_data.get("quota_7d_remaining"),
+        quota_7d_reset_days=_optional_int(codex_data.get("quota_7d_reset_days")),
         quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
         quota_stale=bool(codex_data.get("quota_stale", False)),
         funds_balance=_optional_text(codex_data.get("funds_balance")),
@@ -161,6 +178,7 @@ def default_state() -> VibeStickState:
         project="vibestick",
         quota_5h_remaining=None,
         quota_7d_remaining=None,
+        quota_7d_reset_days=None,
         quota_updated_at="",
         quota_stale=False,
         funds_balance=None,
@@ -169,6 +187,8 @@ def default_state() -> VibeStickState:
     )
     return VibeStickState(
         time=now_time_text(),
+        date=now_date_text(),
+        weekday=now_weekday_text(),
         wifi=True,
         ble=False,
         battery=None,
@@ -181,6 +201,7 @@ def default_state() -> VibeStickState:
             project=codex.project,
             quota_5h_remaining=codex.quota_5h_remaining,
             quota_7d_remaining=codex.quota_7d_remaining,
+            quota_7d_reset_days=codex.quota_7d_reset_days,
             quota_updated_at=codex.quota_updated_at,
             quota_stale=codex.quota_stale,
             funds_balance=codex.funds_balance,

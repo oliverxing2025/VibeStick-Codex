@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,11 @@
 #define LVGL_DRAW_BUF_LINES 24
 #define LVGL_TICK_PERIOD_MS 10
 #define BATTERY_FILL_MAX_WIDTH 20
+#define ACTIVITY_COLUMNS 29
+#define ACTIVITY_ROWS 3
+#define ACTIVITY_FRAME_MS 36
+#define ORIENTATION_SAMPLE_MS 230
+#define ORIENTATION_STABLE_SAMPLES 3
 
 #define PIN_BUTTON_FRONT 11
 #define PIN_BUTTON_SIDE 12
@@ -85,7 +91,9 @@ typedef struct {
 } agent_provider_config_t;
 
 typedef struct {
-    char time[8];
+    char time[9];
+    char date[8];
+    char weekday[12];
     bool wifi;
     bool ble;
     int battery;
@@ -95,8 +103,10 @@ typedef struct {
     char project[40];
     int quota_5h;
     int quota_7d;
+    int quota_7d_reset_days;
     bool quota_5h_valid;
     bool quota_7d_valid;
+    bool quota_7d_reset_days_valid;
     char quota_updated_at[8];
     bool quota_stale;
     char funds_balance[20];
@@ -113,8 +123,10 @@ typedef struct {
     char project[40];
     int quota_5h;
     int quota_7d;
+    int quota_7d_reset_days;
     bool quota_5h_valid;
     bool quota_7d_valid;
+    bool quota_7d_reset_days_valid;
     char quota_updated_at[8];
     bool quota_stale;
     char funds_balance[20];
@@ -137,12 +149,17 @@ static bool s_long_press_active;
 static bool s_side_long_press_active;
 static bool s_startup_active;
 static bool s_ignore_startup_button_release;
+static bool s_landscape_active;
+static bool s_orientation_enabled;
+static bool s_portrait_axis_x;
+static bool s_portrait_axis_ready;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
 static char s_recording_session_id[40];
 
 static lv_display_t *s_display;
+static esp_lcd_panel_handle_t s_panel;
 static lv_obj_t *s_wifi_label;
 static lv_obj_t *s_time_label;
 static lv_obj_t *s_battery_label;
@@ -163,9 +180,25 @@ static lv_obj_t *s_recording_wave_bars[5];
 static lv_obj_t *s_recording_title;
 static lv_obj_t *s_recording_hint;
 static lv_obj_t *s_startup_screen;
+static lv_obj_t *s_seconds_label;
+static lv_obj_t *s_days_left_label;
+static lv_obj_t *s_percent_left_label;
+static lv_obj_t *s_date_group;
+static lv_obj_t *s_date_label;
+static lv_obj_t *s_date_separator;
+static lv_obj_t *s_weekday_label;
+static lv_obj_t *s_run_count_label;
+static lv_obj_t *s_ask_count_label;
+static lv_obj_t *s_new_count_label;
+static lv_obj_t *s_activity_cells[ACTIVITY_ROWS][ACTIVITY_COLUMNS];
+static lv_timer_t *s_activity_timer;
+static int s_activity_active_columns = -1;
+static int s_new_count;
 
 static agent_state_t s_state = {
     .time = "--:--",
+    .date = "--- --",
+    .weekday = "-------",
     .wifi = false,
     .ble = false,
     .battery = 0,
@@ -175,8 +208,10 @@ static agent_state_t s_state = {
     .project = "vibestick",
     .quota_5h = 0,
     .quota_7d = 0,
+    .quota_7d_reset_days = 0,
     .quota_5h_valid = false,
     .quota_7d_valid = false,
+    .quota_7d_reset_days_valid = false,
     .quota_updated_at = "",
     .quota_stale = false,
     .funds_balance = "",
@@ -194,8 +229,10 @@ static provider_display_state_t s_provider_states[PROVIDER_COUNT] = {
         .project = "vibestick",
         .quota_5h = 0,
         .quota_7d = 0,
+        .quota_7d_reset_days = 0,
         .quota_5h_valid = false,
         .quota_7d_valid = false,
+        .quota_7d_reset_days_valid = false,
         .quota_updated_at = "",
         .quota_stale = false,
         .funds_balance = "",
@@ -230,6 +267,7 @@ static const lv_point_precise_t s_battery_bolt_points[] = {
 };
 
 static void render_state(void);
+static void create_portrait_ui(lv_obj_t *screen, bool with_startup);
 
 static void queue_event(agent_event_type_t type)
 {
@@ -407,22 +445,21 @@ static esp_err_t init_display(void)
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle),
                         TAG, "panel io");
 
-    esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_LCD_RST,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel), TAG, "panel");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), TAG, "panel reset");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "panel init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel, true), TAG, "panel invert");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(panel, LCD_X_GAP, LCD_Y_GAP), TAG, "panel gap");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "panel on");
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(io_handle, &panel_config, &s_panel), TAG, "panel");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "panel reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "panel init");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, true), TAG, "panel invert");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(s_panel, LCD_X_GAP, LCD_Y_GAP), TAG, "panel gap");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "panel on");
 
     lv_init();
     s_display = lv_display_create(LCD_H_RES, LCD_V_RES);
-    lv_display_set_user_data(s_display, panel);
+    lv_display_set_user_data(s_display, s_panel);
     lv_display_set_flush_cb(s_display, lvgl_flush_cb);
 
     size_t buffer_size = LCD_H_RES * LVGL_DRAW_BUF_LINES * sizeof(lv_color_t);
@@ -582,7 +619,9 @@ static void start_recording_wave(void)
 static lv_obj_t *make_fullscreen_overlay(lv_obj_t *parent)
 {
     lv_obj_t *overlay = lv_obj_create(parent);
-    lv_obj_set_size(overlay, LCD_H_RES, LCD_V_RES);
+    lv_obj_set_size(overlay,
+                    lv_display_get_horizontal_resolution(s_display),
+                    lv_display_get_vertical_resolution(s_display));
     lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(overlay, 0, 0);
     lv_obj_set_style_bg_color(overlay, lv_color_hex(0x050608), 0);
@@ -610,6 +649,244 @@ static lv_obj_t *make_metric_card(lv_obj_t *screen, int32_t y, const char *title
     return card;
 }
 
+static lv_color_t scale_activity_color(uint32_t color, float brightness)
+{
+    uint32_t red = (uint32_t)(((color >> 16) & 0xff) * brightness + 0.5f);
+    uint32_t green = (uint32_t)(((color >> 8) & 0xff) * brightness + 0.5f);
+    uint32_t blue = (uint32_t)((color & 0xff) * brightness + 0.5f);
+    return lv_color_make((uint8_t)red, (uint8_t)green, (uint8_t)blue);
+}
+
+static void activity_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (!s_landscape_active) {
+        return;
+    }
+    static const uint32_t base_colors[ACTIVITY_ROWS] = {
+        0xc8ff43, 0x72d9ff, 0xbfaeff,
+    };
+    static const float minimum_brightness[ACTIVITY_ROWS] = {
+        0.84f, 0.86f, 0.86f,
+    };
+    static const float pulse_amplitude[ACTIVITY_ROWS] = {
+        0.16f, 0.14f, 0.14f,
+    };
+    static const float row_delay_cycles[ACTIVITY_ROWS] = {
+        0.0f, 60.0f / 1050.0f, 110.0f / 1050.0f,
+    };
+    const int64_t elapsed_us = esp_timer_get_time();
+    const float cycle_time =
+        (float)(elapsed_us % 1050000LL) / 1050000.0f;
+    const float column_delay_cycles = 220.0f / 1050.0f;
+    const float gaussian_sigma = 0.18f;
+    const float gaussian_denominator =
+        2.0f * gaussian_sigma * gaussian_sigma;
+    const provider_display_state_t *display_state =
+        current_provider_display_state();
+    int active_columns = 0;
+    if (display_state->quota_7d_valid) {
+        int remaining = display_state->quota_7d;
+        if (remaining < 0) {
+            remaining = 0;
+        } else if (remaining > 100) {
+            remaining = 100;
+        }
+        active_columns =
+            (remaining * ACTIVITY_COLUMNS + 99) / 100;
+    }
+
+    if (active_columns != s_activity_active_columns) {
+        for (int row = 0; row < ACTIVITY_ROWS; ++row) {
+            for (int col = active_columns; col < ACTIVITY_COLUMNS; ++col) {
+                lv_obj_set_style_bg_color(s_activity_cells[row][col],
+                                          lv_color_hex(0x30353a), 0);
+                lv_obj_set_style_border_color(s_activity_cells[row][col],
+                                              lv_color_hex(0x262a2e), 0);
+            }
+        }
+        s_activity_active_columns = active_columns;
+    }
+
+    for (int row = 0; row < ACTIVITY_ROWS; ++row) {
+        for (int col = 0; col < active_columns; ++col) {
+            float phase = cycle_time - col * column_delay_cycles -
+                          row_delay_cycles[row];
+            phase -= floorf(phase);
+            float distance = fminf(phase, 1.0f - phase);
+            float pulse = expf(-(distance * distance) / gaussian_denominator);
+            float brightness = minimum_brightness[row] +
+                               pulse * pulse_amplitude[row];
+            lv_color_t fill =
+                scale_activity_color(base_colors[row], brightness);
+            lv_color_t border =
+                scale_activity_color(base_colors[row], brightness * 0.90f);
+            lv_obj_set_style_bg_color(s_activity_cells[row][col], fill, 0);
+            lv_obj_set_style_border_color(s_activity_cells[row][col], border, 0);
+        }
+    }
+}
+
+static void create_recording_overlay(lv_obj_t *screen)
+{
+    s_recording_overlay = make_fullscreen_overlay(screen);
+    lv_obj_add_flag(s_recording_overlay, LV_OBJ_FLAG_HIDDEN);
+    s_recording_wave_group = lv_obj_create(s_recording_overlay);
+    lv_obj_remove_style_all(s_recording_wave_group);
+    lv_obj_set_size(s_recording_wave_group, 82, 54);
+    lv_obj_set_flex_flow(s_recording_wave_group, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_recording_wave_group, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(s_recording_wave_group, 6, 0);
+    lv_obj_align(s_recording_wave_group, LV_ALIGN_CENTER, 0, -20);
+    static const int initial_wave_heights[5] = {14, 22, 32, 22, 14};
+    for (int i = 0; i < 5; ++i) {
+        s_recording_wave_bars[i] = make_plain_obj(s_recording_wave_group, 6,
+                                                  initial_wave_heights[i],
+                                                  lv_color_hex(0xf4f5f7),
+                                                  LV_OPA_COVER, 3);
+    }
+    s_recording_title = make_label(s_recording_overlay, "正在聆听", FONT_CN,
+                                   lv_color_hex(0xf4f5f7), 180, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(s_recording_title, LV_ALIGN_CENTER, 0, 26);
+    s_recording_hint = make_label(s_recording_overlay, "松开发送", FONT_CN,
+                                  lv_color_hex(0x8b9098), 180, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -7);
+}
+
+static void layout_landscape_date_row(const char *date_text,
+                                      const char *weekday_text)
+{
+    const int32_t separator_size = 3;
+    const int32_t separator_gap = 8;
+    lv_label_set_text(s_date_label, date_text);
+    lv_label_set_text(s_weekday_label, weekday_text);
+    lv_obj_set_size(s_date_label, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_size(s_weekday_label, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_update_layout(s_date_group);
+    int32_t date_width = lv_obj_get_width(s_date_label);
+    lv_obj_set_pos(s_date_label, 6, 4);
+    lv_obj_set_pos(s_date_separator, 6 + date_width + separator_gap, 11);
+    lv_obj_set_pos(s_weekday_label,
+                   6 + date_width + separator_gap + separator_size +
+                       separator_gap,
+                   4);
+    lv_obj_invalidate(s_date_group);
+}
+
+static void create_landscape_ui(lv_obj_t *screen)
+{
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x161a1e), 0);
+    lv_obj_set_style_pad_all(screen, 0, 0);
+
+    s_status_dot = make_plain_obj(screen, 7, 7, lv_color_hex(0xc6f24a),
+                                  LV_OPA_COVER, LV_RADIUS_CIRCLE);
+    lv_obj_align(s_status_dot, LV_ALIGN_TOP_LEFT, 6, 6);
+    s_status_label = make_label(screen, "RUNNING", &lv_font_montserrat_12,
+                                lv_color_hex(0xc6f24a), 78, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 17, 2);
+    lv_obj_t *top_line = make_plain_obj(screen, 45, 1, lv_color_hex(0x56606a),
+                                        LV_OPA_COVER, 0);
+    lv_obj_align(top_line, LV_ALIGN_TOP_RIGHT, -5, 9);
+
+    s_time_label = make_label(screen, "--:--", &lv_font_montserrat_36,
+                              lv_color_hex(0xf2f4f7), 126, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_time_label, LV_ALIGN_TOP_LEFT, 10, 26);
+    s_seconds_label = make_label(screen, "--", &lv_font_montserrat_16,
+                                 lv_color_hex(0xc9d1d9), 38, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_seconds_label, LV_ALIGN_TOP_LEFT, 134, 23);
+    s_days_left_label = make_label(screen, "--天", FONT_CN,
+                                   lv_color_hex(0xd8dde3), 38,
+                                   LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_days_left_label, LV_ALIGN_TOP_LEFT, 134, 41);
+    s_percent_left_label = make_label(screen, "--%", &lv_font_montserrat_16,
+                                      lv_color_hex(0xd8dde3), 38,
+                                      LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_percent_left_label, LV_ALIGN_TOP_LEFT, 134, 59);
+
+    static const char *counter_names[3] = {"RUN", "ASK", "NEW"};
+    static const uint32_t counter_colors[3] = {0xb8e63a, 0xa88bff, 0x41c7ff};
+    static const uint32_t counter_text_colors[3] = {0x243000, 0x241a4d, 0x08293a};
+    lv_obj_t **counter_values[3] = {&s_run_count_label, &s_ask_count_label,
+                                    &s_new_count_label};
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t *tag = make_plain_obj(screen, 36, 16, lv_color_hex(counter_colors[i]),
+                                       LV_OPA_COVER, 5);
+        lv_obj_align(tag, LV_ALIGN_TOP_LEFT, 176, 23 + i * 20);
+        lv_obj_t *name = make_label(tag, counter_names[i], &lv_font_montserrat_10,
+                                    lv_color_hex(counter_text_colors[i]), 34,
+                                    LV_TEXT_ALIGN_CENTER);
+        lv_obj_center(name);
+        *counter_values[i] = make_label(screen, "0", &lv_font_montserrat_14,
+                                        lv_color_hex(0xf2f4f7), 18, LV_TEXT_ALIGN_RIGHT);
+        lv_obj_align(*counter_values[i], LV_ALIGN_TOP_RIGHT, -5, 22 + i * 20);
+    }
+
+    s_date_group = make_plain_obj(screen, LCD_V_RES, 28,
+                                  lv_color_hex(0x161a1e), LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(s_date_group, 0, 74);
+    lv_obj_remove_flag(s_date_group, LV_OBJ_FLAG_SCROLLABLE);
+    s_date_label = make_label(s_date_group, "--- --", &lv_font_montserrat_14,
+                              lv_color_hex(0xf2f4f7), 61, LV_TEXT_ALIGN_LEFT);
+    s_date_separator = make_plain_obj(s_date_group, 3, 3,
+                                      lv_color_hex(0x8e98a3),
+                                      LV_OPA_COVER, LV_RADIUS_CIRCLE);
+    s_weekday_label = make_label(s_date_group, "-------",
+                                 &lv_font_montserrat_14,
+                                 lv_color_hex(0xc9d1d9), 66, LV_TEXT_ALIGN_LEFT);
+    layout_landscape_date_row("--- --", "-------");
+
+    for (int row = 0; row < ACTIVITY_ROWS; ++row) {
+        for (int col = 0; col < ACTIVITY_COLUMNS; ++col) {
+            s_activity_cells[row][col] = make_plain_obj(screen, 7, 6,
+                                                        lv_color_hex(0x30353a),
+                                                        LV_OPA_COVER, 2);
+            lv_obj_set_style_border_width(s_activity_cells[row][col], 1, 0);
+            lv_obj_set_style_border_opa(s_activity_cells[row][col],
+                                        LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(s_activity_cells[row][col],
+                                          lv_color_hex(0x262a2e), 0);
+            lv_obj_set_pos(s_activity_cells[row][col], 4 + col * 8, 108 + row * 7);
+        }
+    }
+    create_recording_overlay(screen);
+    s_activity_timer = lv_timer_create(activity_timer_cb, ACTIVITY_FRAME_MS, NULL);
+}
+
+static void switch_display_orientation(bool landscape)
+{
+    lvgl_lock();
+    lv_obj_t *old_screen = lv_display_get_screen_active(s_display);
+    if (s_activity_timer) {
+        lv_timer_delete(s_activity_timer);
+        s_activity_timer = NULL;
+    }
+    if (landscape) {
+        ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, true));
+        ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, true, false));
+        ESP_ERROR_CHECK(esp_lcd_panel_set_gap(s_panel, LCD_Y_GAP, LCD_X_GAP));
+        lv_display_set_resolution(s_display, LCD_V_RES, LCD_H_RES);
+    } else {
+        ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, false));
+        ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, false, false));
+        ESP_ERROR_CHECK(esp_lcd_panel_set_gap(s_panel, LCD_X_GAP, LCD_Y_GAP));
+        lv_display_set_resolution(s_display, LCD_H_RES, LCD_V_RES);
+    }
+    lv_obj_t *new_screen = lv_obj_create(NULL);
+    s_landscape_active = landscape;
+    if (landscape) {
+        create_landscape_ui(new_screen);
+    } else {
+        create_portrait_ui(new_screen, false);
+    }
+    lv_screen_load(new_screen);
+    lv_obj_delete(old_screen);
+    s_startup_screen = NULL;
+    lvgl_unlock();
+    ESP_LOGI(TAG, "display orientation=%s", landscape ? "landscape" : "portrait");
+    render_state();
+}
+
 static void dismiss_startup_screen(void)
 {
     lvgl_lock();
@@ -618,7 +895,10 @@ static void dismiss_startup_screen(void)
         s_startup_screen = NULL;
     }
     s_startup_active = false;
+    s_orientation_enabled = true;
+    s_portrait_axis_ready = false;
     lvgl_unlock();
+    render_state();
 }
 
 static void create_startup_screen(lv_obj_t *screen)
@@ -650,9 +930,8 @@ static void create_startup_screen(lv_obj_t *screen)
     s_startup_active = true;
 }
 
-static void create_ui(void)
+static void create_portrait_ui(lv_obj_t *screen, bool with_startup)
 {
-    lv_obj_t *screen = lv_display_get_screen_active(s_display);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x050608), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
 
@@ -729,7 +1008,14 @@ static void create_ui(void)
                                   lv_color_hex(0x8b9098), 120, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -22);
 
-    create_startup_screen(screen);
+    if (with_startup) {
+        create_startup_screen(screen);
+    }
+}
+
+static void create_ui(void)
+{
+    create_portrait_ui(lv_display_get_screen_active(s_display), true);
 }
 
 static void set_status_color(const agent_provider_config_t *provider, const char *status)
@@ -737,7 +1023,7 @@ static void set_status_color(const agent_provider_config_t *provider, const char
     (void)provider;
     lv_color_t color = lv_color_hex(0x9aa0aa);
     if (strcmp(status, "RUNNING") == 0) {
-        color = lv_color_hex(0xf5c84c);
+        color = s_landscape_active ? lv_color_hex(0xc6f24a) : lv_color_hex(0xf5c84c);
     } else if (strcmp(status, "DONE") == 0) {
         color = lv_color_hex(0x32d583);
     } else if (strcmp(status, "APPROVAL") == 0) {
@@ -789,6 +1075,75 @@ static void render_state(void)
     const agent_provider_config_t *provider = current_provider_config();
     const provider_display_state_t *display_state = current_provider_display_state();
     const char *status_key = display_state->status;
+
+    if (s_landscape_active) {
+        char hour_minute[6] = "--:--";
+        char seconds[3] = "--";
+        if (strlen(s_state.time) >= 5) {
+            memcpy(hour_minute, s_state.time, 5);
+            hour_minute[5] = '\0';
+        }
+        if (strlen(s_state.time) >= 8) {
+            memcpy(seconds, s_state.time + 6, 2);
+            seconds[2] = '\0';
+        }
+        lv_label_set_text(s_time_label, hour_minute);
+        lv_label_set_text(s_seconds_label, seconds);
+        char days_left_text[12] = "--天";
+        if (display_state->quota_7d_reset_days_valid) {
+            int days_left = display_state->quota_7d_reset_days;
+            snprintf(days_left_text, sizeof(days_left_text), "%d天", days_left);
+        }
+        lv_label_set_text(s_days_left_label, days_left_text);
+        char percent_left_text[8] = "--%";
+        if (display_state->quota_7d_valid) {
+            int percent_left = display_state->quota_7d;
+            snprintf(percent_left_text, sizeof(percent_left_text), "%d%%",
+                     percent_left);
+        }
+        lv_label_set_text(s_percent_left_label, percent_left_text);
+        layout_landscape_date_row(
+            s_state.date[0] ? s_state.date : "--- --",
+            s_state.weekday[0] ? s_state.weekday : "-------");
+
+        const char *landscape_status = status_key;
+        if (strcmp(status_key, "APPROVAL") == 0) {
+            landscape_status = "WAITING";
+        } else if (strcmp(status_key, "UNKNOWN") == 0) {
+            landscape_status = "IDLE";
+        }
+        lv_label_set_text(s_status_label, landscape_status);
+        set_status_color(provider, status_key);
+        lv_color_t status_color = lv_color_hex(0x9aa0aa);
+        if (strcmp(status_key, "RUNNING") == 0) {
+            status_color = lv_color_hex(0xc6f24a);
+        } else if (strcmp(status_key, "DONE") == 0) {
+            status_color = lv_color_hex(0x65e58c);
+        } else if (strcmp(status_key, "APPROVAL") == 0) {
+            status_color = lv_color_hex(0xffcf4b);
+        } else if (strcmp(status_key, "ERROR") == 0 ||
+                   strcmp(status_key, "OFFLINE") == 0) {
+            status_color = lv_color_hex(0xff5a5f);
+        }
+        lv_obj_set_style_text_color(s_status_label, status_color, 0);
+
+        lv_label_set_text(s_run_count_label,
+                          strcmp(status_key, "RUNNING") == 0 ? "1" : "0");
+        lv_label_set_text(s_ask_count_label,
+                          strcmp(status_key, "APPROVAL") == 0 ? "1" : "0");
+        char count_text[4];
+        int visible_new_count = s_new_count;
+        if (visible_new_count < 0) {
+            visible_new_count = 0;
+        } else if (visible_new_count > 9) {
+            visible_new_count = 9;
+        }
+        snprintf(count_text, sizeof(count_text), "%d", visible_new_count);
+        lv_label_set_text(s_new_count_label, count_text);
+        activity_timer_cb(NULL);
+        lvgl_unlock();
+        return;
+    }
 
     lv_label_set_text(s_wifi_label, s_wifi_connected ? "WIFI" : "OFF");
     lv_label_set_text(s_time_label, s_state.time[0] ? s_state.time : "--:--");
@@ -906,6 +1261,11 @@ static void maybe_handle_alert(void)
     }
     if (!should_play_alert_sound()) {
         return;
+    }
+    if (strcmp(s_state.alert_type, "DONE") == 0 ||
+        strcmp(s_state.alert_type, "COMPLETED") == 0 ||
+        strcmp(s_state.alert_type, "SUCCESS") == 0) {
+        s_new_count++;
     }
     if (s_recording_overlay_visible || vibe_audio_is_recording()) {
         ESP_LOGI(TAG, "skip alert sound while recording overlay is active type=%s",
@@ -1076,6 +1436,8 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
 
     cJSON *quota_5h = cJSON_GetObjectItemCaseSensitive(source, "quota_5h_remaining");
     cJSON *quota_7d = cJSON_GetObjectItemCaseSensitive(source, "quota_7d_remaining");
+    cJSON *quota_7d_reset_days =
+        cJSON_GetObjectItemCaseSensitive(source, "quota_7d_reset_days");
     cJSON *stale = cJSON_GetObjectItemCaseSensitive(source, "quota_stale");
     cJSON *funds = cJSON_GetObjectItemCaseSensitive(source, "funds_balance");
     cJSON *today = cJSON_GetObjectItemCaseSensitive(source, "today_spend");
@@ -1088,6 +1450,12 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     target->quota_7d_valid = json_percent_value(quota_7d, &quota_value);
     if (target->quota_7d_valid) {
         target->quota_7d = quota_value;
+    }
+    target->quota_7d_reset_days_valid =
+        cJSON_IsNumber(quota_7d_reset_days) &&
+        quota_7d_reset_days->valuedouble >= 0;
+    if (target->quota_7d_reset_days_valid) {
+        target->quota_7d_reset_days = (int)quota_7d_reset_days->valuedouble;
     }
     target->quota_stale = cJSON_IsBool(stale) ? cJSON_IsTrue(stale) : false;
     if (cJSON_IsString(funds) && funds->valuestring) {
@@ -1159,6 +1527,8 @@ static bool parse_state_json(const char *json)
     }
 
     copy_json_string(state_root, "time", s_state.time, sizeof(s_state.time));
+    copy_json_string(state_root, "date", s_state.date, sizeof(s_state.date));
+    copy_json_string(state_root, "weekday", s_state.weekday, sizeof(s_state.weekday));
     cJSON *wifi = cJSON_GetObjectItemCaseSensitive(state_root, "wifi");
     cJSON *ble = cJSON_GetObjectItemCaseSensitive(state_root, "ble");
     s_state.wifi = cJSON_IsBool(wifi) ? cJSON_IsTrue(wifi) : s_state.wifi;
@@ -1570,6 +1940,65 @@ static esp_err_t init_button(void)
     return ESP_OK;
 }
 
+static void orientation_task(void *arg)
+{
+    (void)arg;
+    bool candidate_landscape = false;
+    int stable_samples = 0;
+    int log_countdown = 0;
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(ORIENTATION_SAMPLE_MS));
+        if (!s_orientation_enabled || s_startup_active ||
+            s_recording_overlay_visible || vibe_audio_is_recording()) {
+            stable_samples = 0;
+            continue;
+        }
+        int16_t x = 0;
+        int16_t y = 0;
+        int16_t z = 0;
+        if (vibe_board_accel_read(&x, &y, &z) != ESP_OK) {
+            continue;
+        }
+        int ax = abs((int)x);
+        int ay = abs((int)y);
+        int az = abs((int)z);
+        int in_plane = ax > ay ? ax : ay;
+        int cross_plane = ax > ay ? ay : ax;
+        if (in_plane < 8000 || in_plane < az + 2500 ||
+            in_plane < cross_plane + 3000) {
+            stable_samples = 0;
+            continue;
+        }
+        bool axis_x = ax > ay;
+        if (!s_portrait_axis_ready) {
+            s_portrait_axis_x = axis_x;
+            s_portrait_axis_ready = true;
+            ESP_LOGI(TAG, "portrait orientation baseline axis=%c accel=%d,%d,%d",
+                     axis_x ? 'X' : 'Y', x, y, z);
+            continue;
+        }
+
+        bool wants_landscape = axis_x != s_portrait_axis_x;
+        if (wants_landscape != candidate_landscape) {
+            candidate_landscape = wants_landscape;
+            stable_samples = 1;
+        } else if (stable_samples < ORIENTATION_STABLE_SAMPLES) {
+            stable_samples++;
+        }
+        if (++log_countdown >= 20) {
+            log_countdown = 0;
+            ESP_LOGI(TAG, "orientation accel=%d,%d,%d target=%s current=%s",
+                     x, y, z, wants_landscape ? "landscape" : "portrait",
+                     s_landscape_active ? "landscape" : "portrait");
+        }
+        if (stable_samples >= ORIENTATION_STABLE_SAMPLES &&
+            wants_landscape != s_landscape_active) {
+            stable_samples = 0;
+            switch_display_orientation(wants_landscape);
+        }
+    }
+}
+
 static void app_task(void *arg)
 {
     (void)arg;
@@ -1641,6 +2070,10 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(vibe_board_init_power());
+    esp_err_t imu_status = vibe_board_imu_init();
+    if (imu_status != ESP_OK) {
+        ESP_LOGW(TAG, "orientation switching disabled: %s", esp_err_to_name(imu_status));
+    }
     s_event_queue = xQueueCreate(10, sizeof(agent_event_t));
     s_lvgl_lock = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK(init_display());
@@ -1652,4 +2085,7 @@ void app_main(void)
     ESP_ERROR_CHECK(vibe_audio_init());
     ESP_ERROR_CHECK(init_wifi());
     xTaskCreate(app_task, "agent_app", 6144, NULL, 4, NULL);
+    if (imu_status == ESP_OK) {
+        xTaskCreate(orientation_task, "orientation", 4096, NULL, 3, NULL);
+    }
 }

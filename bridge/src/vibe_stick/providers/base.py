@@ -22,6 +22,7 @@ class ProviderObservation:
     alert_message: str
     alert_event_id: str
     latest_event_timestamp: datetime | None = None
+    quota_7d_reset_days: int | None = None
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
