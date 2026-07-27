@@ -102,7 +102,7 @@ ls /dev/cu.*
 - 正面蓝键短按：打开 Codex 或把 Codex 窗口带到前台；等待确认时发送允许。
 - 正面蓝键双击：刷新 `FUNDS / TODAY / TOKEN`。
 - 正面蓝键长按：录音；松开后转写并填入 Codex，等待手动发送。
-- 侧键短按：发送当前输入。
+- 侧键短按：跨项目批准全部等待中的 Codex 任务；没有待批准任务时发送当前输入。
 - 侧键双击：清空当前输入框中的文本。
 - 侧键长按：新建 Codex 对话。
 
@@ -245,7 +245,7 @@ idf.py build
 
 - 这是整理后的原型，不是打包好的 Mac app 或 DMG。
 - 固件只面向 M5Stack StickS3。
-- `FUNDS` 显示 Codex 当前额度剩余百分比，`TODAY` 显示对应的用量消耗百分比，`TOKEN` 显示今天累计 Token。
+- `FUNDS` 显示 Codex 当前额度剩余百分比，`TODAY` 显示对应的用量消耗百分比，`TOKEN` 显示今天累计 Token。横屏界面的 `FIN` 由 Mac bridge 持久保存，StickS3 断电或重新刷机后会自动恢复。
 - ASR 可靠性取决于麦克风采集、上传 PCM 质量、provider 可达性和模型配置。
 
 ## 贡献与安全

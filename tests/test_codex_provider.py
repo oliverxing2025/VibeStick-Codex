@@ -1,13 +1,246 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest import mock
 
-from vibe_stick.codex.local_observer import LocalCodexObservation, _quota_from_payload
+from vibe_stick.codex.local_observer import (
+    LocalCodexObservation,
+    _daily_used_percent,
+    _quota_from_payload,
+    _session_is_running,
+    _session_is_waiting,
+    _thread_id_from_session,
+    waiting_thread_ids,
+)
 from vibe_stick.codex.quota import QuotaSnapshot
 from vibe_stick.protocol.state import AgentStatus
 from vibe_stick.providers.codex import observation_from_local_codex
 
 
 class CodexProviderTests(unittest.TestCase):
+    def test_thread_id_comes_from_session_metadata_or_rollout_filename(self) -> None:
+        metadata_id = "019fa1bd-7d3b-7913-a86b-5220bf6aa96f"
+        events = [
+            {
+                "type": "session_meta",
+                "payload": {"id": metadata_id},
+            }
+        ]
+
+        self.assertEqual(
+            _thread_id_from_session(Path("/tmp/rollout.jsonl"), events),
+            metadata_id,
+        )
+        self.assertEqual(
+            _thread_id_from_session(
+                Path(f"/tmp/rollout-2026-07-27T00-00-00-{metadata_id}.jsonl"),
+                [],
+            ),
+            metadata_id,
+        )
+
+    def test_waiting_thread_ids_returns_each_pending_thread_once(self) -> None:
+        first_id = "019fa1bd-7d3b-7913-a86b-5220bf6aa96f"
+        second_id = "019fa1bd-7d3b-7913-a86b-5220bf6aa970"
+        paths = [
+            Path(f"/tmp/rollout-{first_id}.jsonl"),
+            Path(f"/tmp/rollout-{first_id}.jsonl"),
+            Path(f"/tmp/rollout-{second_id}.jsonl"),
+        ]
+        waiting_event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "event_msg",
+            "payload": {"type": "waiting_approval"},
+        }
+
+        with mock.patch(
+            "vibe_stick.codex.local_observer._session_files",
+            return_value=paths,
+        ), mock.patch(
+            "vibe_stick.codex.local_observer._tail_json_events",
+            return_value=[waiting_event],
+        ):
+            self.assertEqual(waiting_thread_ids(), [first_id, second_id])
+
+    def test_daily_used_percent_is_delta_from_local_day_baseline(self) -> None:
+        self.assertEqual(_daily_used_percent(26.0, 27.0, 42.0), 16)
+        self.assertEqual(_daily_used_percent(None, 26.0, 42.0), 16)
+        self.assertEqual(_daily_used_percent(42.0, 42.0, 40.0), 0)
+
+    def test_session_running_count_uses_task_lifecycle(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        started = {
+            "timestamp": (now - timedelta(seconds=20)).isoformat(),
+            "type": "event_msg",
+            "payload": {"type": "task_started"},
+        }
+        tool_activity = {
+            "timestamp": (now - timedelta(seconds=2)).isoformat(),
+            "type": "response_item",
+            "payload": {"type": "custom_tool_call"},
+        }
+        completed = {
+            "timestamp": (now - timedelta(seconds=1)).isoformat(),
+            "type": "event_msg",
+            "payload": {"type": "task_complete"},
+        }
+
+        self.assertTrue(_session_is_running([started, tool_activity], now))
+        self.assertFalse(
+            _session_is_running([started, tool_activity, completed], now)
+        )
+
+    def test_started_long_running_session_survives_short_activity_window(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(minutes=10)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "task_started"},
+            }
+        ]
+
+        self.assertTrue(_session_is_running(events, now))
+
+    def test_recent_session_without_lifecycle_in_tail_counts_as_running(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "response_item",
+                "payload": {"type": "custom_tool_call_output"},
+            }
+        ]
+
+        self.assertTrue(_session_is_running(events, now))
+
+    def test_latest_approval_event_counts_as_waiting(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=20)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "task_started"},
+            },
+            {
+                "timestamp": (now - timedelta(seconds=2)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "waiting_approval"},
+            },
+        ]
+
+        self.assertTrue(_session_is_waiting(events, now))
+
+    def test_activity_after_approval_clears_waiting(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "waiting_approval"},
+            },
+            {
+                "timestamp": (now - timedelta(seconds=1)).isoformat(),
+                "type": "response_item",
+                "payload": {"type": "custom_tool_call_output"},
+            },
+        ]
+
+        self.assertFalse(_session_is_waiting(events, now))
+
+    def test_unanswered_escalated_tool_call_counts_as_waiting(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "call_id": "call_pending",
+                    "name": "exec_command",
+                    "arguments": (
+                        '{"cmd":"open app","sandbox_permissions":'
+                        '"require_escalated","justification":"Allow?"}'
+                    ),
+                },
+            },
+            {
+                "timestamp": (now - timedelta(seconds=2)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "token_count"},
+            },
+        ]
+
+        self.assertTrue(_session_is_waiting(events, now))
+
+    def test_tool_output_clears_escalated_waiting_count(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "call_id": "call_approved",
+                    "name": "exec",
+                    "input": (
+                        'await tools.exec_command({"cmd":"open app",'
+                        '"sandbox_permissions":"require_escalated"})'
+                    ),
+                },
+            },
+            {
+                "timestamp": (now - timedelta(seconds=1)).isoformat(),
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call_output",
+                    "call_id": "call_approved",
+                    "output": "completed",
+                },
+            },
+        ]
+
+        self.assertFalse(_session_is_waiting(events, now))
+
+    def test_stalled_apply_patch_counts_as_waiting_for_file_approval(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        patch_call = {
+            "timestamp": (now - timedelta(seconds=3)).isoformat(),
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "call_id": "call_patch",
+                "name": "apply_patch",
+                "input": "*** Begin Patch",
+            },
+        }
+
+        self.assertTrue(_session_is_waiting([patch_call], now))
+
+    def test_fast_or_completed_apply_patch_does_not_count_as_waiting(self) -> None:
+        now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
+        patch_call = {
+            "timestamp": (now - timedelta(seconds=1)).isoformat(),
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "call_id": "call_patch",
+                "name": "apply_patch",
+            },
+        }
+        patch_end = {
+            "timestamp": now.isoformat(),
+            "type": "event_msg",
+            "payload": {
+                "type": "patch_apply_end",
+                "call_id": "call_patch",
+                "status": "completed",
+            },
+        }
+
+        self.assertFalse(_session_is_waiting([patch_call], now))
+        self.assertFalse(_session_is_waiting([patch_call, patch_end], now))
+
     def test_weekly_reset_timestamp_maps_to_rounded_up_days(self) -> None:
         now = datetime(2026, 7, 27, 0, 0, tzinfo=timezone.utc)
         payload = {
@@ -49,6 +282,9 @@ class CodexProviderTests(unittest.TestCase):
                 funds_balance="12.50",
                 today_spend="1.25",
                 today_tokens=5800000,
+                today_used_percent=16,
+                running_tasks=2,
+                waiting_tasks=3,
             )
         )
 
@@ -64,6 +300,9 @@ class CodexProviderTests(unittest.TestCase):
         self.assertEqual(observation.funds_balance, "12.50")
         self.assertEqual(observation.today_spend, "1.25")
         self.assertEqual(observation.today_tokens, 5800000)
+        self.assertEqual(observation.today_used_percent, 16)
+        self.assertEqual(observation.running_tasks, 2)
+        self.assertEqual(observation.waiting_tasks, 3)
 
     def test_missing_codex_quota_maps_to_unknown_bars(self) -> None:
         observation = observation_from_local_codex(

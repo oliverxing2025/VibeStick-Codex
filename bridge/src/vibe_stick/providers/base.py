@@ -26,6 +26,10 @@ class ProviderObservation:
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    today_used_percent: int | None = None
+    running_tasks: int = 0
+    waiting_tasks: int = 0
+    finished_tasks: int = 0
 
 
 class Provider(Protocol):

@@ -29,6 +29,7 @@
 #define TASK_EXIT_WAIT_MS 800
 #define VIBE_STICK_SOUND_VOLUME 0.40f
 #define VIBE_STICK_DONE_SOUND_VOLUME_SCALE 0.30f
+#define VIBE_STICK_WAIT_SOUND_VOLUME_SCALE 0.30f
 #define VIBE_STICK_SOUND_FRAME_SAMPLES 160
 #define VIBE_STICK_SOUND_FADE_MS 8
 #define VIBE_STICK_SOUND_OUTPUT_VOLUME 85
@@ -297,6 +298,11 @@ static const sound_segment_t *sound_segments_for(agent_sound_t sound, size_t *co
         {.freq_hz = 0, .duration_ms = 40},
         {.freq_hz = 1320, .duration_ms = 120},
     };
+    static const sound_segment_t wait[] = {
+        {.freq_hz = 660, .duration_ms = 90},
+        {.freq_hz = 0, .duration_ms = 45},
+        {.freq_hz = 440, .duration_ms = 110},
+    };
     static const sound_segment_t error[] = {
         {.freq_hz = 240, .duration_ms = 100},
         {.freq_hz = 0, .duration_ms = 60},
@@ -314,6 +320,9 @@ static const sound_segment_t *sound_segments_for(agent_sound_t sound, size_t *co
     case VIBE_STICK_SOUND_DONE:
         *count = sizeof(done) / sizeof(done[0]);
         return done;
+    case VIBE_STICK_SOUND_WAIT:
+        *count = sizeof(wait) / sizeof(wait[0]);
+        return wait;
     case VIBE_STICK_SOUND_ERROR:
         *count = sizeof(error) / sizeof(error[0]);
         return error;
@@ -469,8 +478,12 @@ esp_err_t vibe_audio_play_sound(agent_sound_t sound)
         err = init_codec(ESP_CODEC_DEV_TYPE_OUT, ESP_CODEC_DEV_WORK_MODE_DAC);
     }
     if (err == ESP_OK) {
-        const float volume_scale =
-            sound == VIBE_STICK_SOUND_DONE ? VIBE_STICK_DONE_SOUND_VOLUME_SCALE : 1.0f;
+        float volume_scale = 1.0f;
+        if (sound == VIBE_STICK_SOUND_DONE) {
+            volume_scale = VIBE_STICK_DONE_SOUND_VOLUME_SCALE;
+        } else if (sound == VIBE_STICK_SOUND_WAIT) {
+            volume_scale = VIBE_STICK_WAIT_SOUND_VOLUME_SCALE;
+        }
         err = play_sound_segments(segments, segment_count, volume_scale);
     }
 

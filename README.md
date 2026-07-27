@@ -104,7 +104,7 @@ Aim for all required checks to pass. The StickS3 should show Wi-Fi, time, batter
 - Front blue, short press: open/focus Codex; approve when Codex is waiting for confirmation.
 - Front blue, double press: refresh `FUNDS / TODAY / TOKEN`.
 - Front blue, hold and release: record, transcribe, and enter into Codex without submitting.
-- Side, short press: send the current input.
+- Side, short press: approve all waiting Codex tasks across projects; if none are waiting, send the current input.
 - Side, double press: clear the current input text.
 - Side, hold: create a new Codex chat.
 
@@ -247,7 +247,7 @@ idf.py build
 
 - This is a cleaned prototype, not a packaged Mac app or DMG.
 - The firmware targets M5Stack StickS3 only.
-- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows today's accumulated token count.
+- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows today's accumulated token count. The landscape `FIN` counter is persisted by the Mac bridge and restored after StickS3 power cycles or firmware flashes.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
 
 ## Contributing & Security

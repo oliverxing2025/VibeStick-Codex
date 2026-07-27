@@ -113,6 +113,11 @@ typedef struct {
     char today_spend[20];
     int today_tokens;
     bool today_tokens_valid;
+    int today_used_percent;
+    bool today_used_percent_valid;
+    int running_tasks;
+    int waiting_tasks;
+    int finished_tasks;
     char alert_event_id[56];
     char alert_type[24];
     char alert_message[80];
@@ -133,6 +138,11 @@ typedef struct {
     char today_spend[20];
     int today_tokens;
     bool today_tokens_valid;
+    int today_used_percent;
+    bool today_used_percent_valid;
+    int running_tasks;
+    int waiting_tasks;
+    int finished_tasks;
 } provider_display_state_t;
 
 typedef struct {
@@ -156,6 +166,8 @@ static bool s_portrait_axis_ready;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
+static bool s_wait_sound_baseline_ready;
+static int s_last_waiting_tasks;
 static char s_recording_session_id[40];
 
 static lv_display_t *s_display;
@@ -193,7 +205,6 @@ static lv_obj_t *s_new_count_label;
 static lv_obj_t *s_activity_cells[ACTIVITY_ROWS][ACTIVITY_COLUMNS];
 static lv_timer_t *s_activity_timer;
 static int s_activity_active_columns = -1;
-static int s_new_count;
 
 static agent_state_t s_state = {
     .time = "--:--",
@@ -218,6 +229,11 @@ static agent_state_t s_state = {
     .today_spend = "",
     .today_tokens = 0,
     .today_tokens_valid = false,
+    .today_used_percent = 0,
+    .today_used_percent_valid = false,
+    .running_tasks = 0,
+    .waiting_tasks = 0,
+    .finished_tasks = 0,
     .alert_event_id = "",
     .alert_type = "NONE",
     .alert_message = "",
@@ -239,6 +255,11 @@ static provider_display_state_t s_provider_states[PROVIDER_COUNT] = {
         .today_spend = "",
         .today_tokens = 0,
         .today_tokens_valid = false,
+        .today_used_percent = 0,
+        .today_used_percent_valid = false,
+        .running_tasks = 0,
+        .waiting_tasks = 0,
+        .finished_tasks = 0,
     },
 };
 
@@ -804,7 +825,7 @@ static void create_landscape_ui(lv_obj_t *screen)
                                       LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_percent_left_label, LV_ALIGN_TOP_LEFT, 134, 59);
 
-    static const char *counter_names[3] = {"RUN", "ASK", "NEW"};
+    static const char *counter_names[3] = {"RUN", "WAIT", "FIN"};
     static const uint32_t counter_colors[3] = {0xb8e63a, 0xa88bff, 0x41c7ff};
     static const uint32_t counter_text_colors[3] = {0x243000, 0x241a4d, 0x08293a};
     lv_obj_t **counter_values[3] = {&s_run_count_label, &s_ask_count_label,
@@ -818,8 +839,8 @@ static void create_landscape_ui(lv_obj_t *screen)
                                     LV_TEXT_ALIGN_CENTER);
         lv_obj_center(name);
         *counter_values[i] = make_label(screen, "0", &lv_font_montserrat_14,
-                                        lv_color_hex(0xf2f4f7), 18, LV_TEXT_ALIGN_RIGHT);
-        lv_obj_align(*counter_values[i], LV_ALIGN_TOP_RIGHT, -5, 22 + i * 20);
+                                        lv_color_hex(0xf2f4f7), 22, LV_TEXT_ALIGN_RIGHT);
+        lv_obj_align(*counter_values[i], LV_ALIGN_TOP_RIGHT, -4, 22 + i * 20);
     }
 
     s_date_group = make_plain_obj(screen, LCD_V_RES, 28,
@@ -1127,18 +1148,34 @@ static void render_state(void)
         }
         lv_obj_set_style_text_color(s_status_label, status_color, 0);
 
-        lv_label_set_text(s_run_count_label,
-                          strcmp(status_key, "RUNNING") == 0 ? "1" : "0");
-        lv_label_set_text(s_ask_count_label,
-                          strcmp(status_key, "APPROVAL") == 0 ? "1" : "0");
-        char count_text[4];
-        int visible_new_count = s_new_count;
-        if (visible_new_count < 0) {
-            visible_new_count = 0;
-        } else if (visible_new_count > 9) {
-            visible_new_count = 9;
+        char running_tasks_text[4];
+        int visible_running_tasks = display_state->running_tasks;
+        if (visible_running_tasks < 0) {
+            visible_running_tasks = 0;
+        } else if (visible_running_tasks > 99) {
+            visible_running_tasks = 99;
         }
-        snprintf(count_text, sizeof(count_text), "%d", visible_new_count);
+        snprintf(running_tasks_text, sizeof(running_tasks_text), "%d",
+                 visible_running_tasks);
+        lv_label_set_text(s_run_count_label, running_tasks_text);
+        char waiting_tasks_text[4];
+        int visible_waiting_tasks = display_state->waiting_tasks;
+        if (visible_waiting_tasks < 0) {
+            visible_waiting_tasks = 0;
+        } else if (visible_waiting_tasks > 99) {
+            visible_waiting_tasks = 99;
+        }
+        snprintf(waiting_tasks_text, sizeof(waiting_tasks_text), "%d",
+                 visible_waiting_tasks);
+        lv_label_set_text(s_ask_count_label, waiting_tasks_text);
+        char count_text[4];
+        int visible_finished_tasks = display_state->finished_tasks;
+        if (visible_finished_tasks < 0) {
+            visible_finished_tasks = 0;
+        } else if (visible_finished_tasks > 99) {
+            visible_finished_tasks = 99;
+        }
+        snprintf(count_text, sizeof(count_text), "%d", visible_finished_tasks);
         lv_label_set_text(s_new_count_label, count_text);
         activity_timer_cb(NULL);
         lvgl_unlock();
@@ -1165,7 +1202,8 @@ static void render_state(void)
     const int quota_remaining = display_state->quota_7d_valid
         ? display_state->quota_7d : display_state->quota_5h;
     set_percent_label(s_funds_value_label, quota_remaining, quota_valid);
-    set_percent_label(s_today_value_label, 100 - quota_remaining, quota_valid);
+    set_percent_label(s_today_value_label, display_state->today_used_percent,
+                      display_state->today_used_percent_valid);
     set_token_label(s_token_value_label, display_state->today_tokens,
                     display_state->today_tokens_valid);
     lvgl_unlock();
@@ -1262,11 +1300,6 @@ static void maybe_handle_alert(void)
     if (!should_play_alert_sound()) {
         return;
     }
-    if (strcmp(s_state.alert_type, "DONE") == 0 ||
-        strcmp(s_state.alert_type, "COMPLETED") == 0 ||
-        strcmp(s_state.alert_type, "SUCCESS") == 0) {
-        s_new_count++;
-    }
     if (s_recording_overlay_visible || vibe_audio_is_recording()) {
         ESP_LOGI(TAG, "skip alert sound while recording overlay is active type=%s",
                  s_state.alert_type);
@@ -1280,6 +1313,35 @@ static void maybe_handle_alert(void)
     }
     ESP_LOGI(TAG, "alert type=%s project=%s message=%s",
              s_state.alert_type, s_state.project, s_state.alert_message);
+}
+
+static void maybe_handle_waiting_tasks(void)
+{
+    const int waiting_tasks = current_provider_display_state()->waiting_tasks;
+    if (!s_wait_sound_baseline_ready) {
+        s_last_waiting_tasks = waiting_tasks;
+        s_wait_sound_baseline_ready = true;
+        return;
+    }
+
+    const bool should_play = waiting_tasks > 0 && waiting_tasks > s_last_waiting_tasks;
+    s_last_waiting_tasks = waiting_tasks;
+    if (!should_play) {
+        return;
+    }
+    if (s_recording_overlay_visible || vibe_audio_is_recording()) {
+        ESP_LOGI(TAG, "skip wait sound while recording overlay is active count=%d",
+                 waiting_tasks);
+        return;
+    }
+
+    esp_err_t err = vibe_audio_play_sound(VIBE_STICK_SOUND_WAIT);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "wait sound skipped count=%d err=%s",
+                 waiting_tasks, esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "wait sound played count=%d", waiting_tasks);
 }
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -1442,6 +1504,11 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     cJSON *funds = cJSON_GetObjectItemCaseSensitive(source, "funds_balance");
     cJSON *today = cJSON_GetObjectItemCaseSensitive(source, "today_spend");
     cJSON *tokens = cJSON_GetObjectItemCaseSensitive(source, "today_tokens");
+    cJSON *today_used_percent =
+        cJSON_GetObjectItemCaseSensitive(source, "today_used_percent");
+    cJSON *running_tasks = cJSON_GetObjectItemCaseSensitive(source, "running_tasks");
+    cJSON *waiting_tasks = cJSON_GetObjectItemCaseSensitive(source, "waiting_tasks");
+    cJSON *finished_tasks = cJSON_GetObjectItemCaseSensitive(source, "finished_tasks");
     int quota_value = 0;
     target->quota_5h_valid = json_percent_value(quota_5h, &quota_value);
     if (target->quota_5h_valid) {
@@ -1474,6 +1541,28 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     } else {
         target->today_tokens = 0;
         target->today_tokens_valid = false;
+    }
+    target->today_used_percent_valid =
+        json_percent_value(today_used_percent, &quota_value);
+    if (target->today_used_percent_valid) {
+        target->today_used_percent = quota_value;
+    } else {
+        target->today_used_percent = 0;
+    }
+    if (cJSON_IsNumber(running_tasks) && running_tasks->valuedouble >= 0) {
+        target->running_tasks = (int)running_tasks->valuedouble;
+    } else {
+        target->running_tasks = 0;
+    }
+    if (cJSON_IsNumber(waiting_tasks) && waiting_tasks->valuedouble >= 0) {
+        target->waiting_tasks = (int)waiting_tasks->valuedouble;
+    } else {
+        target->waiting_tasks = 0;
+    }
+    if (cJSON_IsNumber(finished_tasks) && finished_tasks->valuedouble >= 0) {
+        target->finished_tasks = (int)finished_tasks->valuedouble;
+    } else {
+        target->finished_tasks = 0;
     }
 }
 
@@ -1600,6 +1689,7 @@ static void poll_state(void)
     }
     render_state();
     maybe_handle_alert();
+    maybe_handle_waiting_tasks();
 }
 
 static void post_simple_event(const char *event_name, const char *path)
