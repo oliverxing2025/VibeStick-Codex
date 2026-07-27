@@ -35,6 +35,10 @@ class CodexState:
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    today_used_percent: int | None = None
+    running_tasks: int = 0
+    waiting_tasks: int = 0
+    finished_tasks: int = 0
 
 
 @dataclass
@@ -52,6 +56,10 @@ class ProviderState:
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    today_used_percent: int | None = None
+    running_tasks: int = 0
+    waiting_tasks: int = 0
+    finished_tasks: int = 0
 
 
 @dataclass
@@ -129,6 +137,12 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
             funds_balance=_optional_text(codex_data.get("funds_balance")),
             today_spend=_optional_text(codex_data.get("today_spend")),
             today_tokens=_optional_int(codex_data.get("today_tokens")),
+            today_used_percent=_optional_percent(
+                codex_data.get("today_used_percent")
+            ),
+            running_tasks=_optional_int(codex_data.get("running_tasks")) or 0,
+            waiting_tasks=_optional_int(codex_data.get("waiting_tasks")) or 0,
+            finished_tasks=_optional_int(codex_data.get("finished_tasks")) or 0,
         ),
         alert=AlertState(
             event_id=str(alert_data.get("event_id") or ""),
@@ -153,6 +167,10 @@ def _provider_state_from_dict(codex_data: dict[str, Any]) -> ProviderState:
         funds_balance=_optional_text(codex_data.get("funds_balance")),
         today_spend=_optional_text(codex_data.get("today_spend")),
         today_tokens=_optional_int(codex_data.get("today_tokens")),
+        today_used_percent=_optional_percent(codex_data.get("today_used_percent")),
+        running_tasks=_optional_int(codex_data.get("running_tasks")) or 0,
+        waiting_tasks=_optional_int(codex_data.get("waiting_tasks")) or 0,
+        finished_tasks=_optional_int(codex_data.get("finished_tasks")) or 0,
     )
 
 
@@ -172,6 +190,11 @@ def _optional_int(value: object) -> int | None:
         return None
 
 
+def _optional_percent(value: object) -> int | None:
+    parsed = _optional_int(value)
+    return min(100, parsed) if parsed is not None else None
+
+
 def default_state() -> VibeStickState:
     codex = CodexState(
         status=AgentStatus.RUNNING,
@@ -184,6 +207,10 @@ def default_state() -> VibeStickState:
         funds_balance=None,
         today_spend=None,
         today_tokens=None,
+        today_used_percent=None,
+        running_tasks=0,
+        waiting_tasks=0,
+        finished_tasks=0,
     )
     return VibeStickState(
         time=now_time_text(),
@@ -207,6 +234,10 @@ def default_state() -> VibeStickState:
             funds_balance=codex.funds_balance,
             today_spend=codex.today_spend,
             today_tokens=codex.today_tokens,
+            today_used_percent=codex.today_used_percent,
+            running_tasks=codex.running_tasks,
+            waiting_tasks=codex.waiting_tasks,
+            finished_tasks=codex.finished_tasks,
         ),
         codex=codex,
         alert=AlertState(event_id="", type=AlertType.NONE, message=""),

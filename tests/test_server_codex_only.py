@@ -1,5 +1,8 @@
 import unittest
 import threading
+import json
+import tempfile
+from pathlib import Path
 from unittest import mock
 
 from vibe_stick.desktop.codex_control import ControlResult
@@ -18,11 +21,36 @@ class ServerCodexOnlyTests(unittest.TestCase):
         store.codex_controller.send.return_value = ControlResult(True, "Codex message sent")
         store._save_state_locked = mock.Mock()
 
-        store.update_from_event({"event": "side_short", "source": "sticks3"})
+        with mock.patch.object(app, "waiting_thread_ids", return_value=[]):
+            store.update_from_event({"event": "side_short", "source": "sticks3"})
 
         store.codex_controller.send.assert_called_once_with()
+        store.codex_controller.approve_all.assert_not_called()
         store.codex_controller.next_thread.assert_not_called()
         store.codex_controller.decline.assert_not_called()
+
+    def test_side_short_approves_all_waiting_threads(self) -> None:
+        store = app.BridgeStateStore.__new__(app.BridgeStateStore)
+        store._lock = threading.RLock()
+        store._state = app.default_state()
+        store._manual_status_until = 0.0
+        store.codex_controller = mock.Mock()
+        store.codex_controller.approve_all.return_value = ControlResult(
+            True,
+            "Accepted 2 Codex approval requests",
+        )
+        store._save_state_locked = mock.Mock()
+        thread_ids = [
+            "019fa1bd-7d3b-7913-a86b-5220bf6aa96f",
+            "019fa1bd-7d3b-7913-a86b-5220bf6aa970",
+        ]
+
+        with mock.patch.object(app, "waiting_thread_ids", return_value=thread_ids):
+            store.update_from_event({"event": "side_short", "source": "sticks3"})
+
+        store.codex_controller.approve_all.assert_called_once_with(thread_ids)
+        store.codex_controller.send.assert_not_called()
+        self.assertEqual(store._state.codex.status, AgentStatus.RUNNING)
 
     def test_side_double_clears_current_input(self) -> None:
         store = app.BridgeStateStore.__new__(app.BridgeStateStore)
@@ -57,6 +85,9 @@ class ServerCodexOnlyTests(unittest.TestCase):
             alert_type="NONE",
             alert_message="",
             alert_event_id="",
+            today_used_percent=16,
+            running_tasks=2,
+            waiting_tasks=3,
         )
 
         with mock.patch.object(app, "observe_codex", return_value=observation):
@@ -66,6 +97,35 @@ class ServerCodexOnlyTests(unittest.TestCase):
         self.assertEqual(store._state.active_provider, "codex")
         self.assertEqual(store._state.provider.id, "codex")
         self.assertEqual(store._state.provider.status, AgentStatus.RUNNING)
+        self.assertEqual(store._state.provider.running_tasks, 2)
+        self.assertEqual(store._state.provider.waiting_tasks, 3)
+        self.assertEqual(store._state.provider.today_used_percent, 16)
+
+    def test_finished_counter_persists_and_deduplicates_event_id(self) -> None:
+        store = app.BridgeStateStore.__new__(app.BridgeStateStore)
+        store._state = app.default_state()
+        store._finished_tasks = 7
+        store._last_finished_event_id = "evt_old_done"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_path = Path(tmp) / "task-stats.json"
+            with mock.patch.object(app, "TASK_STATS_PATH", stats_path):
+                store._record_finished_event("evt_new_done")
+                store._record_finished_event("evt_new_done")
+
+                self.assertEqual(store._finished_tasks, 8)
+                self.assertEqual(store._state.codex.finished_tasks, 8)
+                self.assertEqual(store._state.provider.finished_tasks, 8)
+                self.assertEqual(
+                    json.loads(stats_path.read_text()),
+                    {
+                        "finished_tasks": 8,
+                        "last_finished_event_id": "evt_new_done",
+                    },
+                )
+
+                restored = app.BridgeStateStore.__new__(app.BridgeStateStore)
+                self.assertEqual(restored._load_task_stats(), (8, "evt_new_done"))
 
     def test_manual_status_updates_codex_provider(self) -> None:
         store = app.BridgeStateStore.__new__(app.BridgeStateStore)

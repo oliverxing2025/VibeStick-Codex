@@ -28,6 +28,10 @@ class ProtocolStateTests(unittest.TestCase):
                     "funds_balance": "9.20",
                     "today_spend": None,
                     "today_tokens": 5800000,
+                    "today_used_percent": 16,
+                    "running_tasks": 2,
+                    "waiting_tasks": 3,
+                    "finished_tasks": 41,
                 }
             }
         )
@@ -41,6 +45,10 @@ class ProtocolStateTests(unittest.TestCase):
         self.assertEqual(payload["codex"]["funds_balance"], "9.20")
         self.assertIsNone(payload["codex"]["today_spend"])
         self.assertEqual(payload["provider"]["today_tokens"], 5800000)
+        self.assertEqual(payload["provider"]["today_used_percent"], 16)
+        self.assertEqual(payload["provider"]["running_tasks"], 2)
+        self.assertEqual(payload["provider"]["waiting_tasks"], 3)
+        self.assertEqual(payload["provider"]["finished_tasks"], 41)
 
     def test_non_codex_saved_provider_is_normalized_to_codex(self) -> None:
         state = state_from_dict(

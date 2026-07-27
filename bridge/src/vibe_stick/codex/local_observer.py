@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import math
 import os
+import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +20,16 @@ SESSIONS_DIR = CODEX_HOME / "sessions"
 TAIL_BYTES = 1_500_000
 MAX_SESSION_FILES = 40
 RUNNING_ACTIVITY_WINDOW = timedelta(minutes=4)
+RUNNING_TASK_STALE_AFTER = timedelta(hours=6)
+FILE_CHANGE_APPROVAL_GRACE = timedelta(seconds=2)
 ALERT_ACTIVITY_WINDOW = timedelta(minutes=5)
 QUOTA_STALE_AFTER = timedelta(minutes=30)
+THREAD_ID_RE = re.compile(
+    r"(?<![0-9a-f])"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"(?![0-9a-f])",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -38,6 +48,9 @@ class LocalCodexObservation:
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    today_used_percent: int | None = None
+    running_tasks: int = 0
+    waiting_tasks: int = 0
 
 
 def observe_codex(project_root: Path) -> LocalCodexObservation:
@@ -52,13 +65,29 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     latest_funds: tuple[datetime, str] | None = None
     today_tokens = 0
     today_token_data_found = False
-    local_today = datetime.now().astimezone().date()
+    previous_weekly_used: tuple[datetime, float] | None = None
+    first_today_weekly_used: tuple[datetime, float] | None = None
+    latest_today_weekly_used: tuple[datetime, float] | None = None
+    running_tasks = 0
+    waiting_tasks = 0
+    local_now = datetime.now().astimezone()
+    local_today = local_now.date()
+    local_day_start = datetime.combine(
+        local_today,
+        time.min,
+        tzinfo=local_now.tzinfo,
+    ).astimezone(timezone.utc)
     latest_session_path = ""
 
     for session_path in _session_files():
         session_tokens: tuple[datetime, int] | None = None
         latest_session_path = latest_session_path or str(session_path)
-        for event in _tail_json_events(session_path):
+        session_events = _tail_json_events(session_path)
+        if _session_is_waiting(session_events, now):
+            waiting_tasks += 1
+        elif _session_is_running(session_events, now):
+            running_tasks += 1
+        for event in session_events:
             timestamp = _parse_timestamp(event.get("timestamp"))
             if timestamp is None:
                 continue
@@ -83,6 +112,25 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
             quota = _quota_from_payload(payload, timestamp, now)
             if quota is not None and (latest_quota is None or timestamp > latest_quota[0]):
                 latest_quota = (timestamp, quota)
+            weekly_used = _weekly_used_percent_from_payload(payload)
+            if weekly_used is not None:
+                if timestamp < local_day_start:
+                    if (
+                        previous_weekly_used is None
+                        or timestamp > previous_weekly_used[0]
+                    ):
+                        previous_weekly_used = (timestamp, weekly_used)
+                else:
+                    if (
+                        first_today_weekly_used is None
+                        or timestamp < first_today_weekly_used[0]
+                    ):
+                        first_today_weekly_used = (timestamp, weekly_used)
+                    if (
+                        latest_today_weekly_used is None
+                        or timestamp > latest_today_weekly_used[0]
+                    ):
+                        latest_today_weekly_used = (timestamp, weekly_used)
 
             funds = _funds_from_payload(payload)
             if funds is not None and (latest_funds is None or timestamp > latest_funds[0]):
@@ -132,6 +180,13 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         funds_balance=latest_funds[1] if latest_funds else None,
         today_spend=_configured_today_spend(),
         today_tokens=today_tokens if today_token_data_found else None,
+        today_used_percent=_daily_used_percent(
+            previous_weekly_used[1] if previous_weekly_used else None,
+            first_today_weekly_used[1] if first_today_weekly_used else None,
+            latest_today_weekly_used[1] if latest_today_weekly_used else None,
+        ),
+        running_tasks=running_tasks,
+        waiting_tasks=waiting_tasks,
     )
     if latest_alert and status == latest_alert[1]:
         observation.alert_timestamp = latest_alert[0]
@@ -149,6 +204,146 @@ def _session_files() -> list[Path]:
 
 def _tail_json_events(path: Path) -> list[dict[str, Any]]:
     return list(tail_json_events(path, tail_bytes=TAIL_BYTES))
+
+
+def waiting_thread_ids() -> list[str]:
+    """Return all recent Codex thread ids that are still waiting for approval."""
+    now = datetime.now(timezone.utc)
+    thread_ids: list[str] = []
+    seen: set[str] = set()
+    for session_path in _session_files():
+        events = _tail_json_events(session_path)
+        if not _session_is_waiting(events, now):
+            continue
+        thread_id = _thread_id_from_session(session_path, events)
+        if thread_id and thread_id not in seen:
+            seen.add(thread_id)
+            thread_ids.append(thread_id)
+    return thread_ids
+
+
+def _thread_id_from_session(path: Path, events: list[dict[str, Any]]) -> str:
+    for event in events:
+        if event.get("type") != "session_meta":
+            continue
+        payload = event.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        candidate = str(payload.get("id") or "")
+        if THREAD_ID_RE.fullmatch(candidate):
+            return candidate.lower()
+    match = THREAD_ID_RE.search(path.name)
+    return match.group(1).lower() if match else ""
+
+
+def _session_is_running(events: list[dict[str, Any]], now: datetime) -> bool:
+    latest_timestamp: datetime | None = None
+    latest_lifecycle: tuple[datetime, str] | None = None
+    for event in events:
+        timestamp = _parse_timestamp(event.get("timestamp"))
+        if timestamp is None:
+            continue
+        if latest_timestamp is None or timestamp > latest_timestamp:
+            latest_timestamp = timestamp
+        top_type = str(event.get("type") or "")
+        payload = event.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        event_type = str(payload.get("type") or top_type)
+        if event_type in {"task_started", "task_complete"}:
+            if latest_lifecycle is None or timestamp > latest_lifecycle[0]:
+                latest_lifecycle = (timestamp, event_type)
+
+    if latest_timestamp is None:
+        return False
+    if latest_lifecycle is not None:
+        return (
+            latest_lifecycle[1] == "task_started"
+            and now - latest_timestamp <= RUNNING_TASK_STALE_AFTER
+        )
+    return now - latest_timestamp <= RUNNING_ACTIVITY_WINDOW
+
+
+def _session_is_waiting(events: list[dict[str, Any]], now: datetime) -> bool:
+    pending_approval_calls: dict[str, datetime] = {}
+    pending_file_change_calls: dict[str, datetime] = {}
+    latest_event: tuple[datetime, str, dict[str, Any]] | None = None
+    for event in events:
+        timestamp = _parse_timestamp(event.get("timestamp"))
+        if timestamp is None:
+            continue
+        top_type = str(event.get("type") or "")
+        payload = event.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        event_type = str(payload.get("type") or top_type)
+        call_id = payload.get("call_id")
+        if (
+            event_type in {"function_call", "custom_tool_call"}
+            and isinstance(call_id, str)
+            and call_id
+        ):
+            if _tool_call_requires_approval(payload):
+                pending_approval_calls[call_id] = timestamp
+            if payload.get("name") == "apply_patch":
+                pending_file_change_calls[call_id] = timestamp
+        elif (
+            event_type
+            in {
+                "function_call_output",
+                "custom_tool_call_output",
+                "patch_apply_end",
+            }
+            and isinstance(call_id, str)
+            and call_id
+        ):
+            pending_approval_calls.pop(call_id, None)
+            pending_file_change_calls.pop(call_id, None)
+        if latest_event is None or timestamp > latest_event[0]:
+            latest_event = (timestamp, event_type, payload)
+
+    if any(
+        now - timestamp <= RUNNING_TASK_STALE_AFTER
+        for timestamp in pending_approval_calls.values()
+    ):
+        return True
+    if any(
+        FILE_CHANGE_APPROVAL_GRACE <= now - timestamp <= RUNNING_TASK_STALE_AFTER
+        for timestamp in pending_file_change_calls.values()
+    ):
+        return True
+    if latest_event is None or now - latest_event[0] > RUNNING_TASK_STALE_AFTER:
+        return False
+    alert = _alert_from_payload(latest_event[1], latest_event[2])
+    return alert is not None and alert[0] == AgentStatus.APPROVAL
+
+
+def _tool_call_requires_approval(payload: dict[str, Any]) -> bool:
+    for field in ("arguments", "input"):
+        value = payload.get(field)
+        if isinstance(value, dict):
+            if _contains_required_escalation(value):
+                return True
+        elif isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                decoded = None
+            if _contains_required_escalation(decoded):
+                return True
+            if re.search(
+                r"""["']sandbox_permissions["']\s*:\s*["']require_escalated["']""",
+                value,
+            ):
+                return True
+    return False
+
+
+def _contains_required_escalation(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("sandbox_permissions") == "require_escalated":
+            return True
+        return any(_contains_required_escalation(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_required_escalation(item) for item in value)
+    return False
 
 
 def _quota_from_payload(
@@ -187,6 +382,39 @@ def _quota_from_payload(
         quota_updated_at=timestamp.astimezone().strftime("%H:%M"),
         quota_stale=now - timestamp > QUOTA_STALE_AFTER,
     )
+
+
+def _weekly_used_percent_from_payload(payload: dict[str, Any]) -> float | None:
+    if payload.get("type") != "token_count":
+        return None
+    rate_limits = payload.get("rate_limits")
+    if not isinstance(rate_limits, dict):
+        return None
+    for window in ("primary", "secondary"):
+        data = rate_limits.get(window)
+        if not isinstance(data, dict) or data.get("window_minutes") != 10080:
+            continue
+        try:
+            used = float(data.get("used_percent"))
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(used):
+            return None
+        return max(0.0, min(100.0, used))
+    return None
+
+
+def _daily_used_percent(
+    previous_used: float | None,
+    first_today_used: float | None,
+    latest_today_used: float | None,
+) -> int | None:
+    if latest_today_used is None:
+        return None
+    baseline = previous_used if previous_used is not None else first_today_used
+    if baseline is None:
+        return None
+    return max(0, min(100, int(round(latest_today_used - baseline))))
 
 
 def _remaining_percent(used_percent: object) -> int | None:

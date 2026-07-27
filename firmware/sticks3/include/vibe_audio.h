@@ -12,6 +12,7 @@
 
 typedef enum {
     VIBE_STICK_SOUND_DONE,
+    VIBE_STICK_SOUND_WAIT,
     VIBE_STICK_SOUND_ERROR,
     VIBE_STICK_SOUND_APPROVAL,
 } agent_sound_t;

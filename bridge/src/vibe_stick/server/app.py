@@ -15,8 +15,15 @@ from urllib.parse import parse_qs, urlparse
 
 from vibe_stick import __version__ as BRIDGE_VERSION
 from vibe_stick.audio.recorder import RecordingController
+from vibe_stick.codex.local_observer import waiting_thread_ids
 from vibe_stick.codex.quota import QuotaSnapshot, load_quota, save_quota
-from vibe_stick.config.paths import QUOTA_PATH, RECORDING_PATH, STATE_PATH, ensure_app_support
+from vibe_stick.config.paths import (
+    QUOTA_PATH,
+    RECORDING_PATH,
+    STATE_PATH,
+    TASK_STATS_PATH,
+    ensure_app_support,
+)
 from vibe_stick.desktop.hud import hide_hud
 from vibe_stick.desktop.codex_control import CodexDesktopController
 from vibe_stick.protocol.state import (
@@ -54,6 +61,10 @@ class BridgeStateStore:
         self._project_root = _resolve_project_root()
         self._manual_status_until = 0.0
         self._state = self._load_state()
+        saved_finished_tasks, self._last_finished_event_id = self._load_task_stats()
+        self._finished_tasks = max(saved_finished_tasks, self._state.codex.finished_tasks)
+        self._state.codex.finished_tasks = self._finished_tasks
+        self._state.provider.finished_tasks = self._finished_tasks
         self._state.active_provider = "codex"
         quota = load_quota(QUOTA_PATH)
         self._state.codex.quota_5h_remaining = quota.quota_5h_remaining
@@ -95,7 +106,16 @@ class BridgeStateStore:
                 else:
                     self.codex_controller.open_or_focus()
             elif event_name == "side_short":
-                result = self.codex_controller.send()
+                approval_thread_ids = waiting_thread_ids()
+                if approval_thread_ids:
+                    result = self.codex_controller.approve_all(approval_thread_ids)
+                    self._set_codex_status(
+                        AgentStatus.RUNNING.value if result.success else AgentStatus.ERROR.value,
+                        result.message,
+                    )
+                    self._manual_status_until = time.monotonic() + 8
+                else:
+                    result = self.codex_controller.send()
                 if not result.success:
                     self._set_codex_status(AgentStatus.ERROR.value, result.message)
                     self._manual_status_until = time.monotonic() + 8
@@ -118,6 +138,7 @@ class BridgeStateStore:
     def refresh_quota_locked(self) -> None:
         codex_observation = observe_codex(self._project_root)
         self._apply_codex_quota(codex_observation, force_stale=True)
+        self._apply_finished_task_counter(codex_observation)
         self._state.codex = _codex_state_from_observation(codex_observation)
         self._state.active_provider = "codex"
         self._state.provider = _provider_state_from_observation(codex_observation)
@@ -162,6 +183,7 @@ class BridgeStateStore:
         if time.monotonic() < self._manual_status_until:
             _apply_manual_codex_state(codex_observation, self._state)
 
+        self._apply_finished_task_counter(codex_observation)
         self._state.active_provider = "codex"
         self._state.codex = _codex_state_from_observation(codex_observation)
         self._state.provider = _provider_state_from_observation(codex_observation)
@@ -222,6 +244,7 @@ class BridgeStateStore:
         self._state.provider.status = status
         if status == AgentStatus.DONE:
             self._state.alert = AlertState(event_id("done"), AlertType.DONE, message or "Codex task completed")
+            self._record_finished_event(self._state.alert.event_id)
         elif status == AgentStatus.APPROVAL:
             self._state.alert = AlertState(
                 event_id("approval"),
@@ -232,6 +255,43 @@ class BridgeStateStore:
             self._state.alert = AlertState(event_id("error"), AlertType.ERROR, message or "Codex needs attention")
         else:
             self._state.alert = AlertState(event_id="", type=AlertType.NONE, message="")
+
+    def _apply_finished_task_counter(self, observation: ProviderObservation) -> None:
+        if not hasattr(self, "_finished_tasks"):
+            self._finished_tasks = self._state.codex.finished_tasks
+            self._last_finished_event_id = ""
+        if observation.alert_type in {"DONE", "COMPLETED", "SUCCESS"}:
+            self._record_finished_event(observation.alert_event_id)
+        observation.finished_tasks = self._finished_tasks
+
+    def _record_finished_event(self, finished_event_id: str) -> None:
+        if not hasattr(self, "_finished_tasks"):
+            self._finished_tasks = self._state.codex.finished_tasks
+            self._last_finished_event_id = ""
+        if not finished_event_id or finished_event_id == self._last_finished_event_id:
+            return
+        self._finished_tasks += 1
+        self._last_finished_event_id = finished_event_id
+        self._state.codex.finished_tasks = self._finished_tasks
+        self._state.provider.finished_tasks = self._finished_tasks
+        self._save_task_stats()
+
+    def _load_task_stats(self) -> tuple[int, str]:
+        try:
+            data = json.loads(TASK_STATS_PATH.read_text())
+            finished_tasks = max(0, int(data.get("finished_tasks", 0)))
+            last_event_id = str(data.get("last_finished_event_id") or "")
+            return finished_tasks, last_event_id
+        except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError, ValueError):
+            return 0, ""
+
+    def _save_task_stats(self) -> None:
+        TASK_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "finished_tasks": self._finished_tasks,
+            "last_finished_event_id": self._last_finished_event_id,
+        }
+        TASK_STATS_PATH.write_text(json.dumps(payload, indent=2) + "\n")
 
     def _load_state(self) -> VibeStickState:
         try:
@@ -461,6 +521,10 @@ def _codex_state_from_observation(observation: ProviderObservation) -> CodexStat
         funds_balance=observation.funds_balance,
         today_spend=observation.today_spend,
         today_tokens=observation.today_tokens,
+        today_used_percent=observation.today_used_percent,
+        running_tasks=observation.running_tasks,
+        waiting_tasks=observation.waiting_tasks,
+        finished_tasks=observation.finished_tasks,
     )
 
 
@@ -479,6 +543,10 @@ def _provider_state_from_observation(observation: ProviderObservation) -> Provid
         funds_balance=observation.funds_balance,
         today_spend=observation.today_spend,
         today_tokens=observation.today_tokens,
+        today_used_percent=observation.today_used_percent,
+        running_tasks=observation.running_tasks,
+        waiting_tasks=observation.waiting_tasks,
+        finished_tasks=observation.finished_tasks,
     )
 
 

@@ -9,6 +9,10 @@
     "quota_5h_remaining": 62,
     "quota_7d_remaining": 84,
     "quota_7d_reset_days": 7,
+    "running_tasks": 2,
+    "waiting_tasks": 1,
+    "finished_tasks": 41,
+    "today_used_percent": 16,
     "quota_updated_at": "09:38",
     "quota_stale": false
   },

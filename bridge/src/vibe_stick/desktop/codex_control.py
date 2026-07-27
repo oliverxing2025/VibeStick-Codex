@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import platform
+import re
 import subprocess
 from dataclasses import dataclass
+
+
+THREAD_ID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +57,36 @@ class CodexDesktopController:
     def approve(self) -> ControlResult:
         return self._shortcut("key code 36", "Codex approval accepted")
 
+    def approve_all(self, thread_ids: list[str]) -> ControlResult:
+        valid_thread_ids = list(
+            dict.fromkeys(
+                thread_id.lower()
+                for thread_id in thread_ids
+                if THREAD_ID_RE.fullmatch(thread_id)
+            )
+        )
+        if not valid_thread_ids:
+            return ControlResult(False, "No valid Codex approval threads found")
+        if platform.system() != "Darwin":
+            return ControlResult(False, "Codex desktop control is only available on macOS")
+
+        apple_script_ids = ", ".join(f'"{thread_id}"' for thread_id in valid_thread_ids)
+        script = (
+            f"set approvalThreadIds to {{{apple_script_ids}}}\n"
+            "repeat with approvalThreadId in approvalThreadIds\n"
+            '    open location ("codex://threads/" & approvalThreadId)\n'
+            "    delay 0.45\n"
+            '    tell application "System Events" to key code 36\n'
+            "    delay 0.18\n"
+            "end repeat"
+        )
+        count = len(valid_thread_ids)
+        return self._run(
+            ["osascript", "-e", script],
+            f"Accepted {count} Codex approval request{'s' if count != 1 else ''}",
+            timeout=max(5.0, count * 0.75 + 2.0),
+        )
+
     def decline(self) -> ControlResult:
         return self._shortcut("key code 53", "Codex approval declined")
 
@@ -67,14 +104,19 @@ class CodexDesktopController:
         return self._run(["osascript", "-e", script], success_message)
 
     @staticmethod
-    def _run(args: list[str], success_message: str) -> ControlResult:
+    def _run(
+        args: list[str],
+        success_message: str,
+        *,
+        timeout: float = 5.0,
+    ) -> ControlResult:
         try:
             result = subprocess.run(
                 args,
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=timeout,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return ControlResult(False, f"Codex desktop control failed: {exc}")
