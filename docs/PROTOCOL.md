@@ -93,7 +93,7 @@ Returns the current bridge state:
 
 `battery` is intentionally `null` from the bridge. The StickS3 displays its local PMIC battery reading.
 
-`active_provider` is always `codex`. `funds_balance` and `today_tokens` come from local Codex token-count events. `today_used_percent` is the increase in the seven-day `used_percent` since the local-day baseline, rather than the cumulative seven-day usage. `finished_tasks` is the bridge-persisted count of distinct completion events during the current local day. It resets after local midnight and survives StickS3 power cycles and firmware flashes within the same day. `today_spend` is `null` unless a truthful external value is configured. The legacy `codex` block remains present for backward compatibility.
+`active_provider` is always `codex`. `funds_balance` and `today_tokens` come from local Codex token-count events. `today_used_percent` is the increase in the seven-day `used_percent` since the local-day baseline, rather than the cumulative seven-day usage. If the seven-day quota resets during the local day, usage before and after the reset is added so the value still represents the day's actual consumption relative to one full quota allowance. `finished_tasks` is the bridge-persisted count of distinct completion events during the current local day. It resets after local midnight and survives StickS3 power cycles and firmware flashes within the same day. `today_spend` is `null` unless a truthful external value is configured. The legacy `codex` block remains present for backward compatibility.
 
 ## GET /health
 

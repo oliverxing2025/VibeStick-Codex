@@ -17,6 +17,7 @@ from vibe_stick.providers._jsonl import session_files, tail_json_events
 
 CODEX_HOME = Path.home() / ".codex"
 SESSIONS_DIR = CODEX_HOME / "sessions"
+ARCHIVED_SESSIONS_DIR = CODEX_HOME / "archived_sessions"
 TAIL_BYTES = 1_500_000
 MAX_SESSION_FILES = 40
 RUNNING_ACTIVITY_WINDOW = timedelta(minutes=4)
@@ -24,12 +25,18 @@ RUNNING_TASK_STALE_AFTER = timedelta(hours=6)
 FILE_CHANGE_APPROVAL_GRACE = timedelta(seconds=2)
 ALERT_ACTIVITY_WINDOW = timedelta(minutes=5)
 QUOTA_STALE_AFTER = timedelta(minutes=30)
+DAILY_BASELINE_MAX_AGE = timedelta(hours=6)
 THREAD_ID_RE = re.compile(
     r"(?<![0-9a-f])"
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
     r"(?![0-9a-f])",
     re.IGNORECASE,
 )
+_DAILY_USAGE_CACHE_DAY_START: datetime | None = None
+_DAILY_USAGE_FILE_CACHE: dict[
+    Path,
+    tuple[int, list[tuple[datetime, float, float | None]]],
+] = {}
 
 
 @dataclass
@@ -65,9 +72,6 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     latest_funds: tuple[datetime, str] | None = None
     today_tokens = 0
     today_token_data_found = False
-    previous_weekly_used: tuple[datetime, float] | None = None
-    first_today_weekly_used: tuple[datetime, float] | None = None
-    latest_today_weekly_used: tuple[datetime, float] | None = None
     running_tasks = 0
     waiting_tasks = 0
     local_now = datetime.now().astimezone()
@@ -112,26 +116,6 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
             quota = _quota_from_payload(payload, timestamp, now)
             if quota is not None and (latest_quota is None or timestamp > latest_quota[0]):
                 latest_quota = (timestamp, quota)
-            weekly_used = _weekly_used_percent_from_payload(payload)
-            if weekly_used is not None:
-                if timestamp < local_day_start:
-                    if (
-                        previous_weekly_used is None
-                        or timestamp > previous_weekly_used[0]
-                    ):
-                        previous_weekly_used = (timestamp, weekly_used)
-                else:
-                    if (
-                        first_today_weekly_used is None
-                        or timestamp < first_today_weekly_used[0]
-                    ):
-                        first_today_weekly_used = (timestamp, weekly_used)
-                    if (
-                        latest_today_weekly_used is None
-                        or timestamp > latest_today_weekly_used[0]
-                    ):
-                        latest_today_weekly_used = (timestamp, weekly_used)
-
             funds = _funds_from_payload(payload)
             if funds is not None and (latest_funds is None or timestamp > latest_funds[0]):
                 latest_funds = (timestamp, funds)
@@ -156,7 +140,32 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     if latest_cwd is not None:
         project = _project_name_from_path(latest_cwd)
 
+    daily_usage_samples = _daily_weekly_usage_samples(local_day_start)
+    previous_weekly_used = max(
+        (
+            sample
+            for sample in daily_usage_samples
+            if sample[0] < local_day_start
+        ),
+        default=None,
+        key=lambda sample: sample[0],
+    )
+    today_weekly_used_samples = [
+        sample
+        for sample in daily_usage_samples
+        if sample[0] >= local_day_start
+    ]
     quota_snapshot = latest_quota[1] if latest_quota else None
+    daily_baseline: tuple[float, float | None] | None = None
+    if (
+        previous_weekly_used is not None
+        and timedelta(0) <= local_day_start - previous_weekly_used[0]
+        <= DAILY_BASELINE_MAX_AGE
+    ):
+        daily_baseline = (
+            previous_weekly_used[1],
+            previous_weekly_used[2],
+        )
     if not codex_online:
         status = AgentStatus.OFFLINE
     elif (
@@ -180,10 +189,9 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         funds_balance=latest_funds[1] if latest_funds else None,
         today_spend=_configured_today_spend(),
         today_tokens=today_tokens if today_token_data_found else None,
-        today_used_percent=_daily_used_percent(
-            previous_weekly_used[1] if previous_weekly_used else None,
-            first_today_weekly_used[1] if first_today_weekly_used else None,
-            latest_today_weekly_used[1] if latest_today_weekly_used else None,
+        today_used_percent=_daily_used_percent_from_samples(
+            daily_baseline,
+            today_weekly_used_samples,
         ),
         running_tasks=running_tasks,
         waiting_tasks=waiting_tasks,
@@ -204,6 +212,87 @@ def _session_files() -> list[Path]:
 
 def _tail_json_events(path: Path) -> list[dict[str, Any]]:
     return list(tail_json_events(path, tail_bytes=TAIL_BYTES))
+
+
+def _daily_weekly_usage_samples(
+    local_day_start: datetime,
+) -> list[tuple[datetime, float, float | None]]:
+    global _DAILY_USAGE_CACHE_DAY_START
+
+    sample_start = local_day_start - DAILY_BASELINE_MAX_AGE
+    if _DAILY_USAGE_CACHE_DAY_START != local_day_start:
+        _DAILY_USAGE_CACHE_DAY_START = local_day_start
+        _DAILY_USAGE_FILE_CACHE.clear()
+
+    active_paths: set[Path] = set()
+    for path in _daily_usage_session_files(sample_start):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        active_paths.add(path)
+        offset, samples = _DAILY_USAGE_FILE_CACHE.get(path, (0, []))
+        if stat.st_size < offset:
+            offset, samples = 0, []
+        if stat.st_size == offset:
+            continue
+        try:
+            with path.open("rb") as handle:
+                handle.seek(offset)
+                while True:
+                    line_start = handle.tell()
+                    raw_line = handle.readline()
+                    if not raw_line:
+                        offset = handle.tell()
+                        break
+                    if not raw_line.endswith(b"\n"):
+                        offset = line_start
+                        break
+                    offset = handle.tell()
+                    try:
+                        event = json.loads(raw_line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+                    timestamp = _parse_timestamp(event.get("timestamp"))
+                    if timestamp is None or timestamp < sample_start:
+                        continue
+                    payload = event.get("payload")
+                    payload = payload if isinstance(payload, dict) else {}
+                    weekly_usage = _weekly_usage_from_payload(payload)
+                    if weekly_usage is None:
+                        continue
+                    samples.append(
+                        (timestamp, weekly_usage[0], weekly_usage[1])
+                    )
+        except OSError:
+            continue
+        _DAILY_USAGE_FILE_CACHE[path] = (offset, samples)
+
+    for cached_path in set(_DAILY_USAGE_FILE_CACHE) - active_paths:
+        _DAILY_USAGE_FILE_CACHE.pop(cached_path, None)
+
+    return [
+        sample
+        for _, samples in _DAILY_USAGE_FILE_CACHE.values()
+        for sample in samples
+    ]
+
+
+def _daily_usage_session_files(sample_start: datetime) -> list[Path]:
+    minimum_mtime = sample_start.timestamp()
+    paths: list[Path] = []
+    for root in (SESSIONS_DIR, ARCHIVED_SESSIONS_DIR):
+        if not root.exists():
+            continue
+        for path in root.rglob("*.jsonl"):
+            try:
+                if path.is_file() and path.stat().st_mtime >= minimum_mtime:
+                    paths.append(path)
+            except OSError:
+                continue
+    return paths
 
 
 def waiting_thread_ids() -> list[str]:
@@ -384,7 +473,9 @@ def _quota_from_payload(
     )
 
 
-def _weekly_used_percent_from_payload(payload: dict[str, Any]) -> float | None:
+def _weekly_usage_from_payload(
+    payload: dict[str, Any],
+) -> tuple[float, float | None] | None:
     if payload.get("type") != "token_count":
         return None
     rate_limits = payload.get("rate_limits")
@@ -400,7 +491,13 @@ def _weekly_used_percent_from_payload(payload: dict[str, Any]) -> float | None:
             return None
         if not math.isfinite(used):
             return None
-        return max(0.0, min(100.0, used))
+        try:
+            resets_at = float(data.get("resets_at"))
+        except (TypeError, ValueError):
+            resets_at = None
+        if resets_at is not None and not math.isfinite(resets_at):
+            resets_at = None
+        return max(0.0, min(100.0, used)), resets_at
     return None
 
 
@@ -415,6 +512,54 @@ def _daily_used_percent(
     if baseline is None:
         return None
     return max(0, min(100, int(round(latest_today_used - baseline))))
+
+
+def _daily_used_percent_from_samples(
+    previous_sample: tuple[float, float | None] | None,
+    today_samples: list[tuple[datetime, float, float | None]],
+) -> int | None:
+    if not today_samples:
+        return None
+
+    ordered_samples = sorted(today_samples, key=lambda sample: sample[0])
+    if previous_sample is None:
+        previous_value = ordered_samples[0][1]
+        current_resets_at = ordered_samples[0][2]
+        ordered_samples = ordered_samples[1:]
+    else:
+        previous_value, current_resets_at = previous_sample
+
+    total_used = 0.0
+    for _, current_value, resets_at in ordered_samples:
+        if (
+            current_resets_at is not None
+            and resets_at is not None
+            and resets_at < current_resets_at - 300
+        ):
+            # A parallel task can emit an older quota snapshot after a reset.
+            # Ignore that superseded window instead of counting another reset.
+            continue
+        if (
+            current_resets_at is not None
+            and resets_at is not None
+            and resets_at > current_resets_at + 300
+        ):
+            total_used += current_value
+            previous_value = current_value
+            current_resets_at = resets_at
+        elif current_value >= previous_value:
+            total_used += current_value - previous_value
+            previous_value = current_value
+        else:
+            # Without a reliable cycle id, a decrease is the best available
+            # reset signal. With a cycle id, it is a stale in-cycle snapshot.
+            if current_resets_at is None or resets_at is None:
+                total_used += current_value
+                previous_value = current_value
+        if current_resets_at is None and resets_at is not None:
+            current_resets_at = resets_at
+
+    return max(0, min(100, int(round(total_used))))
 
 
 def _remaining_percent(used_percent: object) -> int | None:
