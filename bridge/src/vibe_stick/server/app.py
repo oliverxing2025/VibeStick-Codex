@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import time
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,6 +55,10 @@ PLACEHOLDER_BRIDGE_TOKENS = {
 }
 
 
+def _local_date_key() -> str:
+    return datetime.now().astimezone().date().isoformat()
+
+
 class BridgeStateStore:
     def __init__(self) -> None:
         ensure_app_support()
@@ -61,10 +66,21 @@ class BridgeStateStore:
         self._project_root = _resolve_project_root()
         self._manual_status_until = 0.0
         self._state = self._load_state()
-        saved_finished_tasks, self._last_finished_event_id = self._load_task_stats()
-        self._finished_tasks = max(saved_finished_tasks, self._state.codex.finished_tasks)
+        (
+            saved_finished_tasks,
+            self._last_finished_event_id,
+            saved_task_stats_day,
+        ) = self._load_task_stats()
+        self._task_stats_day = _local_date_key()
+        self._finished_tasks = (
+            saved_finished_tasks
+            if saved_task_stats_day == self._task_stats_day
+            else 0
+        )
         self._state.codex.finished_tasks = self._finished_tasks
         self._state.provider.finished_tasks = self._finished_tasks
+        if saved_task_stats_day != self._task_stats_day:
+            self._save_task_stats()
         self._state.active_provider = "codex"
         quota = load_quota(QUOTA_PATH)
         self._state.codex.quota_5h_remaining = quota.quota_5h_remaining
@@ -78,6 +94,7 @@ class BridgeStateStore:
 
     def get_state(self) -> VibeStickState:
         with self._lock:
+            self._ensure_current_task_day()
             self._refresh_providers_locked()
             self._state.time = now_time_text()
             self._state.date = now_date_text()
@@ -87,6 +104,7 @@ class BridgeStateStore:
 
     def update_from_event(self, event: dict[str, Any]) -> VibeStickState:
         with self._lock:
+            self._ensure_current_task_day()
             event_name = str(event.get("event") or "")
             requested_status = event.get("codex_status") or event.get("status")
             if requested_status:
@@ -260,6 +278,8 @@ class BridgeStateStore:
         if not hasattr(self, "_finished_tasks"):
             self._finished_tasks = self._state.codex.finished_tasks
             self._last_finished_event_id = ""
+            self._task_stats_day = _local_date_key()
+        self._ensure_current_task_day()
         if observation.alert_type in {"DONE", "COMPLETED", "SUCCESS"}:
             self._record_finished_event(observation.alert_event_id)
         observation.finished_tasks = self._finished_tasks
@@ -268,6 +288,8 @@ class BridgeStateStore:
         if not hasattr(self, "_finished_tasks"):
             self._finished_tasks = self._state.codex.finished_tasks
             self._last_finished_event_id = ""
+            self._task_stats_day = _local_date_key()
+        self._ensure_current_task_day()
         if not finished_event_id or finished_event_id == self._last_finished_event_id:
             return
         self._finished_tasks += 1
@@ -276,18 +298,30 @@ class BridgeStateStore:
         self._state.provider.finished_tasks = self._finished_tasks
         self._save_task_stats()
 
-    def _load_task_stats(self) -> tuple[int, str]:
+    def _ensure_current_task_day(self) -> None:
+        today = _local_date_key()
+        if getattr(self, "_task_stats_day", today) == today:
+            return
+        self._task_stats_day = today
+        self._finished_tasks = 0
+        self._state.codex.finished_tasks = 0
+        self._state.provider.finished_tasks = 0
+        self._save_task_stats()
+
+    def _load_task_stats(self) -> tuple[int, str, str]:
         try:
             data = json.loads(TASK_STATS_PATH.read_text())
             finished_tasks = max(0, int(data.get("finished_tasks", 0)))
             last_event_id = str(data.get("last_finished_event_id") or "")
-            return finished_tasks, last_event_id
+            local_date = str(data.get("local_date") or "")
+            return finished_tasks, last_event_id, local_date
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError, ValueError):
-            return 0, ""
+            return 0, "", ""
 
     def _save_task_stats(self) -> None:
         TASK_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
         payload = {
+            "local_date": self._task_stats_day,
             "finished_tasks": self._finished_tasks,
             "last_finished_event_id": self._last_finished_event_id,
         }

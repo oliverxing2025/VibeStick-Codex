@@ -101,15 +101,19 @@ class ServerCodexOnlyTests(unittest.TestCase):
         self.assertEqual(store._state.provider.waiting_tasks, 3)
         self.assertEqual(store._state.provider.today_used_percent, 16)
 
-    def test_finished_counter_persists_and_deduplicates_event_id(self) -> None:
+    def test_finished_counter_persists_for_current_day_and_deduplicates_event_id(self) -> None:
         store = app.BridgeStateStore.__new__(app.BridgeStateStore)
         store._state = app.default_state()
         store._finished_tasks = 7
         store._last_finished_event_id = "evt_old_done"
+        store._task_stats_day = "2026-07-28"
 
         with tempfile.TemporaryDirectory() as tmp:
             stats_path = Path(tmp) / "task-stats.json"
-            with mock.patch.object(app, "TASK_STATS_PATH", stats_path):
+            with (
+                mock.patch.object(app, "TASK_STATS_PATH", stats_path),
+                mock.patch.object(app, "_local_date_key", return_value="2026-07-28"),
+            ):
                 store._record_finished_event("evt_new_done")
                 store._record_finished_event("evt_new_done")
 
@@ -119,13 +123,68 @@ class ServerCodexOnlyTests(unittest.TestCase):
                 self.assertEqual(
                     json.loads(stats_path.read_text()),
                     {
+                        "local_date": "2026-07-28",
                         "finished_tasks": 8,
                         "last_finished_event_id": "evt_new_done",
                     },
                 )
 
                 restored = app.BridgeStateStore.__new__(app.BridgeStateStore)
-                self.assertEqual(restored._load_task_stats(), (8, "evt_new_done"))
+                self.assertEqual(
+                    restored._load_task_stats(),
+                    (8, "evt_new_done", "2026-07-28"),
+                )
+
+    def test_finished_counter_resets_on_local_day_change(self) -> None:
+        store = app.BridgeStateStore.__new__(app.BridgeStateStore)
+        store._state = app.default_state()
+        store._finished_tasks = 7
+        store._last_finished_event_id = "evt_yesterday_done"
+        store._task_stats_day = "2026-07-27"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_path = Path(tmp) / "task-stats.json"
+            with (
+                mock.patch.object(app, "TASK_STATS_PATH", stats_path),
+                mock.patch.object(app, "_local_date_key", return_value="2026-07-28"),
+            ):
+                store._ensure_current_task_day()
+
+                self.assertEqual(store._finished_tasks, 0)
+                self.assertEqual(store._state.codex.finished_tasks, 0)
+                self.assertEqual(store._state.provider.finished_tasks, 0)
+                self.assertEqual(
+                    json.loads(stats_path.read_text()),
+                    {
+                        "local_date": "2026-07-28",
+                        "finished_tasks": 0,
+                        "last_finished_event_id": "evt_yesterday_done",
+                    },
+                )
+
+                store._record_finished_event("evt_yesterday_done")
+                self.assertEqual(store._finished_tasks, 0)
+
+                store._record_finished_event("evt_today_done")
+                self.assertEqual(store._finished_tasks, 1)
+
+    def test_legacy_finished_counter_starts_fresh_today(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_path = Path(tmp) / "task-stats.json"
+            stats_path.write_text(
+                json.dumps(
+                    {
+                        "finished_tasks": 41,
+                        "last_finished_event_id": "evt_legacy_done",
+                    }
+                )
+            )
+            store = app.BridgeStateStore.__new__(app.BridgeStateStore)
+            with mock.patch.object(app, "TASK_STATS_PATH", stats_path):
+                self.assertEqual(
+                    store._load_task_stats(),
+                    (41, "evt_legacy_done", ""),
+                )
 
     def test_manual_status_updates_codex_provider(self) -> None:
         store = app.BridgeStateStore.__new__(app.BridgeStateStore)
