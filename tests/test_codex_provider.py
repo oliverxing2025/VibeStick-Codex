@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -5,7 +7,9 @@ from unittest import mock
 
 from vibe_stick.codex.local_observer import (
     LocalCodexObservation,
+    _daily_usage_session_files,
     _daily_used_percent,
+    _daily_used_percent_from_samples,
     _quota_from_payload,
     _session_is_running,
     _session_is_waiting,
@@ -66,6 +70,73 @@ class CodexProviderTests(unittest.TestCase):
         self.assertEqual(_daily_used_percent(26.0, 27.0, 42.0), 16)
         self.assertEqual(_daily_used_percent(None, 26.0, 42.0), 16)
         self.assertEqual(_daily_used_percent(42.0, 42.0, 40.0), 0)
+
+    def test_daily_used_percent_accumulates_across_quota_reset(self) -> None:
+        base = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        samples = [
+            (base + timedelta(hours=1), 70.0, 1_785_654_184.0),
+            (base + timedelta(hours=2), 73.0, 1_785_654_184.0),
+            (base + timedelta(hours=3), 0.0, 1_785_813_841.0),
+            (base + timedelta(hours=4), 2.0, 1_785_813_841.0),
+        ]
+
+        self.assertEqual(
+            _daily_used_percent_from_samples(
+                (70.0, 1_785_654_184.0),
+                samples,
+            ),
+            5,
+        )
+
+    def test_daily_used_percent_ignores_old_parallel_snapshot_after_reset(self) -> None:
+        base = datetime(2026, 7, 28, tzinfo=timezone.utc)
+        old_reset = 1_785_654_184.0
+        new_reset = 1_785_813_841.0
+        samples = [
+            (base + timedelta(hours=1), 73.0, old_reset),
+            (base + timedelta(hours=2), 0.0, new_reset),
+            (base + timedelta(hours=3), 73.0, old_reset),
+            (base + timedelta(hours=4), 2.0, new_reset),
+        ]
+
+        self.assertEqual(
+            _daily_used_percent_from_samples((70.0, old_reset), samples),
+            5,
+        )
+
+    def test_daily_usage_files_include_live_and_archived_sessions(self) -> None:
+        sample_start = datetime(2026, 7, 27, 18, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions = root / "sessions"
+            archived = root / "archived_sessions"
+            sessions.mkdir()
+            archived.mkdir()
+            live_path = sessions / "live.jsonl"
+            archived_path = archived / "archived.jsonl"
+            stale_path = archived / "stale.jsonl"
+            for path in (live_path, archived_path, stale_path):
+                path.write_text("{}\n")
+            fresh_timestamp = sample_start.timestamp() + 60
+            stale_timestamp = sample_start.timestamp() - 60
+            os.utime(live_path, (fresh_timestamp, fresh_timestamp))
+            os.utime(archived_path, (fresh_timestamp, fresh_timestamp))
+            os.utime(stale_path, (stale_timestamp, stale_timestamp))
+
+            with (
+                mock.patch(
+                    "vibe_stick.codex.local_observer.SESSIONS_DIR",
+                    sessions,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer.ARCHIVED_SESSIONS_DIR",
+                    archived,
+                ),
+            ):
+                self.assertCountEqual(
+                    _daily_usage_session_files(sample_start),
+                    [live_path, archived_path],
+                )
 
     def test_session_running_count_uses_task_lifecycle(self) -> None:
         now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
