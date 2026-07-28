@@ -161,8 +161,6 @@ static bool s_startup_active;
 static bool s_ignore_startup_button_release;
 static bool s_landscape_active;
 static bool s_orientation_enabled;
-static bool s_portrait_axis_x;
-static bool s_portrait_axis_ready;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
@@ -917,7 +915,6 @@ static void dismiss_startup_screen(void)
     }
     s_startup_active = false;
     s_orientation_enabled = true;
-    s_portrait_axis_ready = false;
     lvgl_unlock();
     render_state();
 }
@@ -2059,16 +2056,10 @@ static void orientation_task(void *arg)
             stable_samples = 0;
             continue;
         }
-        bool axis_x = ax > ay;
-        if (!s_portrait_axis_ready) {
-            s_portrait_axis_x = axis_x;
-            s_portrait_axis_ready = true;
-            ESP_LOGI(TAG, "portrait orientation baseline axis=%c accel=%d,%d,%d",
-                     axis_x ? 'X' : 'Y', x, y, z);
-            continue;
-        }
-
-        bool wants_landscape = axis_x != s_portrait_axis_x;
+        // StickS3's BMI270 Y axis follows the display's long edge:
+        // Y-dominant gravity is landscape, X-dominant gravity is portrait.
+        // Keep this mapping absolute so the startup pose cannot reverse it.
+        bool wants_landscape = ay > ax;
         if (wants_landscape != candidate_landscape) {
             candidate_landscape = wants_landscape;
             stable_samples = 1;
