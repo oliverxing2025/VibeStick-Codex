@@ -20,6 +20,7 @@ SESSIONS_DIR = CODEX_HOME / "sessions"
 ARCHIVED_SESSIONS_DIR = CODEX_HOME / "archived_sessions"
 TAIL_BYTES = 1_500_000
 MAX_SESSION_FILES = 40
+MAX_ARCHIVED_QUOTA_FILES = 12
 RUNNING_ACTIVITY_WINDOW = timedelta(minutes=4)
 RUNNING_TASK_STALE_AFTER = timedelta(hours=6)
 FILE_CHANGE_APPROVAL_GRACE = timedelta(seconds=2)
@@ -37,6 +38,20 @@ _DAILY_USAGE_FILE_CACHE: dict[
     Path,
     tuple[int, list[tuple[datetime, float, float | None]]],
 ] = {}
+_TOKEN_CACHE_PERIOD_START: datetime | None = None
+_TOKEN_FILE_CACHE: dict[
+    Path,
+    tuple[
+        int,
+        tuple[datetime, int] | None,
+        tuple[datetime, int] | None,
+    ],
+] = {}
+_ARCHIVED_QUOTA_CACHE_SIGNATURE: tuple[tuple[str, int, int], ...] | None = None
+_ARCHIVED_QUOTA_CACHE: tuple[
+    tuple[datetime, QuotaSnapshot] | None,
+    tuple[datetime, str] | None,
+] = (None, None)
 
 
 @dataclass
@@ -70,8 +85,6 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     latest_alert: tuple[datetime, AgentStatus, str, str] | None = None
     latest_quota: tuple[datetime, QuotaSnapshot] | None = None
     latest_funds: tuple[datetime, str] | None = None
-    today_tokens = 0
-    today_token_data_found = False
     running_tasks = 0
     waiting_tasks = 0
     local_now = datetime.now().astimezone()
@@ -84,7 +97,6 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     latest_session_path = ""
 
     for session_path in _session_files():
-        session_tokens: tuple[datetime, int] | None = None
         latest_session_path = latest_session_path or str(session_path)
         session_events = _tail_json_events(session_path)
         if _session_is_waiting(session_events, now):
@@ -120,22 +132,21 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
             if funds is not None and (latest_funds is None or timestamp > latest_funds[0]):
                 latest_funds = (timestamp, funds)
 
-            tokens = _total_tokens_from_payload(payload)
-            if (
-                tokens is not None
-                and timestamp.astimezone().date() == local_today
-                and (session_tokens is None or timestamp > session_tokens[0])
-            ):
-                session_tokens = (timestamp, tokens)
-
             alert = _alert_from_payload(candidate_type, payload)
             if alert is not None:
                 alert_status, alert_kind, message = alert
                 if latest_alert is None or timestamp > latest_alert[0]:
                     latest_alert = (timestamp, alert_status, alert_kind, message)
-        if session_tokens is not None:
-            today_tokens += session_tokens[1]
-            today_token_data_found = True
+
+    archived_quota, archived_funds = _latest_archived_quota_and_funds(now)
+    if archived_quota is not None and (
+        latest_quota is None or archived_quota[0] > latest_quota[0]
+    ):
+        latest_quota = archived_quota
+    if archived_funds is not None and (
+        latest_funds is None or archived_funds[0] > latest_funds[0]
+    ):
+        latest_funds = archived_funds
 
     if latest_cwd is not None:
         project = _project_name_from_path(latest_cwd)
@@ -156,6 +167,12 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         if sample[0] >= local_day_start
     ]
     quota_snapshot = latest_quota[1] if latest_quota else None
+    period_start = _quota_period_start(quota_snapshot)
+    period_tokens = (
+        _token_total_since(period_start)
+        if period_start is not None
+        else None
+    )
     daily_baseline: tuple[float, float | None] | None = None
     if (
         previous_weekly_used is not None
@@ -188,7 +205,7 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         codex_online=codex_online,
         funds_balance=latest_funds[1] if latest_funds else None,
         today_spend=_configured_today_spend(),
-        today_tokens=today_tokens if today_token_data_found else None,
+        today_tokens=period_tokens,
         today_used_percent=_daily_used_percent_from_samples(
             daily_baseline,
             today_weekly_used_samples,
@@ -212,6 +229,67 @@ def _session_files() -> list[Path]:
 
 def _tail_json_events(path: Path) -> list[dict[str, Any]]:
     return list(tail_json_events(path, tail_bytes=TAIL_BYTES))
+
+
+def _latest_quota_and_funds(
+    paths: list[Path],
+    now: datetime,
+) -> tuple[
+    tuple[datetime, QuotaSnapshot] | None,
+    tuple[datetime, str] | None,
+]:
+    latest_quota: tuple[datetime, QuotaSnapshot] | None = None
+    latest_funds: tuple[datetime, str] | None = None
+    for path in paths:
+        for event in _tail_json_events(path):
+            timestamp = _parse_timestamp(event.get("timestamp"))
+            if timestamp is None:
+                continue
+            payload = event.get("payload")
+            payload = payload if isinstance(payload, dict) else {}
+            quota = _quota_from_payload(payload, timestamp, now)
+            if quota is not None and (
+                latest_quota is None or timestamp > latest_quota[0]
+            ):
+                latest_quota = (timestamp, quota)
+            funds = _funds_from_payload(payload)
+            if funds is not None and (
+                latest_funds is None or timestamp > latest_funds[0]
+            ):
+                latest_funds = (timestamp, funds)
+    return latest_quota, latest_funds
+
+
+def _latest_archived_quota_and_funds(
+    now: datetime,
+) -> tuple[
+    tuple[datetime, QuotaSnapshot] | None,
+    tuple[datetime, str] | None,
+]:
+    global _ARCHIVED_QUOTA_CACHE_SIGNATURE
+    global _ARCHIVED_QUOTA_CACHE
+
+    paths = session_files(
+        ARCHIVED_SESSIONS_DIR,
+        max_files=MAX_ARCHIVED_QUOTA_FILES,
+    )
+    signature: list[tuple[str, int, int]] = []
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        signature.append((str(path), stat.st_mtime_ns, stat.st_size))
+    current_signature = tuple(signature)
+    if current_signature != _ARCHIVED_QUOTA_CACHE_SIGNATURE:
+        _ARCHIVED_QUOTA_CACHE = _latest_quota_and_funds(paths, now)
+        _ARCHIVED_QUOTA_CACHE_SIGNATURE = current_signature
+
+    quota, funds = _ARCHIVED_QUOTA_CACHE
+    if quota is not None:
+        timestamp, snapshot = quota
+        snapshot.quota_stale = now - timestamp > QUOTA_STALE_AFTER
+    return quota, funds
 
 
 def _daily_weekly_usage_samples(
@@ -293,6 +371,92 @@ def _daily_usage_session_files(sample_start: datetime) -> list[Path]:
             except OSError:
                 continue
     return paths
+
+
+def _token_total_since(period_start: datetime) -> int:
+    global _TOKEN_CACHE_PERIOD_START
+
+    if _TOKEN_CACHE_PERIOD_START != period_start:
+        _TOKEN_CACHE_PERIOD_START = period_start
+        _TOKEN_FILE_CACHE.clear()
+
+    active_paths: set[Path] = set()
+    for path in _daily_usage_session_files(period_start):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        active_paths.add(path)
+        offset, before_period, in_period = _TOKEN_FILE_CACHE.get(
+            path,
+            (0, None, None),
+        )
+        if stat.st_size < offset:
+            offset, before_period, in_period = 0, None, None
+        if stat.st_size != offset:
+            try:
+                with path.open("rb") as handle:
+                    handle.seek(offset)
+                    while True:
+                        line_start = handle.tell()
+                        raw_line = handle.readline()
+                        if not raw_line:
+                            offset = handle.tell()
+                            break
+                        if not raw_line.endswith(b"\n"):
+                            offset = line_start
+                            break
+                        offset = handle.tell()
+                        try:
+                            event = json.loads(raw_line.decode("utf-8"))
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        timestamp = _parse_timestamp(event.get("timestamp"))
+                        if timestamp is None:
+                            continue
+                        payload = event.get("payload")
+                        payload = payload if isinstance(payload, dict) else {}
+                        tokens = _total_tokens_from_payload(payload)
+                        if tokens is None:
+                            continue
+                        sample = (timestamp, tokens)
+                        if timestamp < period_start:
+                            if (
+                                before_period is None
+                                or timestamp > before_period[0]
+                            ):
+                                before_period = sample
+                        elif in_period is None or timestamp > in_period[0]:
+                            in_period = sample
+            except OSError:
+                continue
+        _TOKEN_FILE_CACHE[path] = (offset, before_period, in_period)
+
+    for cached_path in set(_TOKEN_FILE_CACHE) - active_paths:
+        _TOKEN_FILE_CACHE.pop(cached_path, None)
+
+    total = 0
+    for _, before_period, in_period in _TOKEN_FILE_CACHE.values():
+        if in_period is None:
+            continue
+        baseline = before_period[1] if before_period is not None else 0
+        total += max(0, in_period[1] - baseline)
+    return total
+
+
+def _quota_period_start(snapshot: QuotaSnapshot | None) -> datetime | None:
+    if snapshot is None or snapshot.quota_7d_resets_at is None:
+        return None
+    try:
+        reset_at = datetime.fromtimestamp(
+            snapshot.quota_7d_resets_at,
+            tz=timezone.utc,
+        )
+    except (OverflowError, OSError, ValueError):
+        return None
+    return reset_at - timedelta(minutes=10080)
 
 
 def waiting_thread_ids() -> list[str]:
@@ -443,12 +607,15 @@ def _quota_from_payload(
     if payload.get("type") != "token_count":
         return None
     rate_limits = payload.get("rate_limits")
-    if not isinstance(rate_limits, dict):
+    if not isinstance(rate_limits, dict) or not _is_main_codex_rate_limit(
+        rate_limits
+    ):
         return None
 
     five_hour = None
     seven_day = None
     seven_day_reset_days = None
+    seven_day_resets_at = None
     for window in ("primary", "secondary"):
         data = rate_limits.get(window)
         if not isinstance(data, dict):
@@ -460,6 +627,15 @@ def _quota_from_payload(
         elif minutes == 10080:
             seven_day = remaining
             seven_day_reset_days = _days_until_reset(data.get("resets_at"), now)
+            try:
+                seven_day_resets_at = float(data.get("resets_at"))
+            except (TypeError, ValueError):
+                seven_day_resets_at = None
+            if (
+                seven_day_resets_at is not None
+                and not math.isfinite(seven_day_resets_at)
+            ):
+                seven_day_resets_at = None
 
     if five_hour is None and seven_day is None:
         return None
@@ -470,6 +646,7 @@ def _quota_from_payload(
         quota_7d_reset_days=seven_day_reset_days,
         quota_updated_at=timestamp.astimezone().strftime("%H:%M"),
         quota_stale=now - timestamp > QUOTA_STALE_AFTER,
+        quota_7d_resets_at=seven_day_resets_at,
     )
 
 
@@ -479,7 +656,9 @@ def _weekly_usage_from_payload(
     if payload.get("type") != "token_count":
         return None
     rate_limits = payload.get("rate_limits")
-    if not isinstance(rate_limits, dict):
+    if not isinstance(rate_limits, dict) or not _is_main_codex_rate_limit(
+        rate_limits
+    ):
         return None
     for window in ("primary", "secondary"):
         data = rate_limits.get(window)
@@ -583,7 +762,11 @@ def _funds_from_payload(payload: dict[str, Any]) -> str | None:
     if payload.get("type") != "token_count":
         return None
     rate_limits = payload.get("rate_limits")
-    credits = rate_limits.get("credits") if isinstance(rate_limits, dict) else None
+    if not isinstance(rate_limits, dict) or not _is_main_codex_rate_limit(
+        rate_limits
+    ):
+        return None
+    credits = rate_limits.get("credits")
     if not isinstance(credits, dict):
         return None
     balance = credits.get("balance")
@@ -591,6 +774,11 @@ def _funds_from_payload(payload: dict[str, Any]) -> str | None:
         return None
     text = str(balance).strip()
     return text or None
+
+
+def _is_main_codex_rate_limit(rate_limits: dict[str, Any]) -> bool:
+    limit_id = str(rate_limits.get("limit_id") or "").strip().lower()
+    return not limit_id or limit_id == "codex"
 
 
 def _total_tokens_from_payload(payload: dict[str, Any]) -> int | None:

@@ -161,6 +161,7 @@ static bool s_recording_overlay_visible;
 static bool s_long_press_active;
 static bool s_side_long_press_active;
 static bool s_landscape_active;
+static bool s_landscape_reverse;
 static bool s_orientation_enabled = true;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
@@ -872,7 +873,7 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_activity_timer = lv_timer_create(activity_timer_cb, ACTIVITY_FRAME_MS, NULL);
 }
 
-static void switch_display_orientation(bool landscape)
+static void switch_display_orientation(bool landscape, bool landscape_reverse)
 {
     lvgl_lock();
     lv_obj_t *old_screen = lv_display_get_screen_active(s_display);
@@ -882,7 +883,10 @@ static void switch_display_orientation(bool landscape)
     }
     if (landscape) {
         ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, true));
-        ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, true, false));
+        ESP_ERROR_CHECK(esp_lcd_panel_mirror(
+            s_panel,
+            landscape_reverse ? false : true,
+            landscape_reverse ? true : false));
         ESP_ERROR_CHECK(esp_lcd_panel_set_gap(s_panel, LCD_Y_GAP, LCD_X_GAP));
         lv_display_set_resolution(s_display, LCD_V_RES, LCD_H_RES);
     } else {
@@ -893,6 +897,7 @@ static void switch_display_orientation(bool landscape)
     }
     lv_obj_t *new_screen = lv_obj_create(NULL);
     s_landscape_active = landscape;
+    s_landscape_reverse = landscape && landscape_reverse;
     if (landscape) {
         create_landscape_ui(new_screen);
     } else {
@@ -901,7 +906,10 @@ static void switch_display_orientation(bool landscape)
     lv_screen_load(new_screen);
     lv_obj_delete(old_screen);
     lvgl_unlock();
-    ESP_LOGI(TAG, "display orientation=%s", landscape ? "landscape" : "portrait");
+    ESP_LOGI(TAG, "display orientation=%s",
+             landscape
+                 ? (landscape_reverse ? "landscape-left" : "landscape-right")
+                 : "portrait");
     render_state();
 }
 
@@ -2002,6 +2010,7 @@ static void orientation_task(void *arg)
 {
     (void)arg;
     bool candidate_landscape = false;
+    bool candidate_landscape_reverse = false;
     int stable_samples = 0;
     int log_countdown = 0;
     while (true) {
@@ -2031,8 +2040,14 @@ static void orientation_task(void *arg)
         // Y-dominant gravity is landscape, X-dominant gravity is portrait.
         // Keep this mapping absolute so the initial device pose cannot reverse it.
         bool wants_landscape = ay > ax;
-        if (wants_landscape != candidate_landscape) {
+        // Positive Y is the already validated button-on-right landscape pose.
+        // Negative Y is the opposite 90-degree pose and needs a 180-degree LCD
+        // mirror so the same landscape UI remains upright.
+        bool wants_landscape_reverse = wants_landscape && y < 0;
+        if (wants_landscape != candidate_landscape ||
+            wants_landscape_reverse != candidate_landscape_reverse) {
             candidate_landscape = wants_landscape;
+            candidate_landscape_reverse = wants_landscape_reverse;
             stable_samples = 1;
         } else if (stable_samples < ORIENTATION_STABLE_SAMPLES) {
             stable_samples++;
@@ -2040,13 +2055,26 @@ static void orientation_task(void *arg)
         if (++log_countdown >= 20) {
             log_countdown = 0;
             ESP_LOGI(TAG, "orientation accel=%d,%d,%d target=%s current=%s",
-                     x, y, z, wants_landscape ? "landscape" : "portrait",
-                     s_landscape_active ? "landscape" : "portrait");
+                     x, y, z,
+                     wants_landscape
+                         ? (wants_landscape_reverse
+                                ? "landscape-left"
+                                : "landscape-right")
+                         : "portrait",
+                     s_landscape_active
+                         ? (s_landscape_reverse
+                                ? "landscape-left"
+                                : "landscape-right")
+                         : "portrait");
         }
         if (stable_samples >= ORIENTATION_STABLE_SAMPLES &&
-            wants_landscape != s_landscape_active) {
+            (wants_landscape != s_landscape_active ||
+             (wants_landscape &&
+              wants_landscape_reverse != s_landscape_reverse))) {
             stable_samples = 0;
-            switch_display_orientation(wants_landscape);
+            switch_display_orientation(
+                wants_landscape,
+                wants_landscape_reverse);
         }
     }
 }
