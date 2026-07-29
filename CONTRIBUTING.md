@@ -23,6 +23,17 @@ CI runs the bridge checks on every push / PR.
 - Match the surrounding code style; add/update tests for behavior changes.
 - Don't change provider icons / generated assets without discussion.
 
+## Pre-push privacy check
+Treat every commit as if it will be public. Before pushing, review the working
+tree, staged diff, and every untracked file. Check for secrets and personal data,
+including tokens, credentials, private email addresses, local paths, device
+identifiers, recordings, transcripts, logs, screenshots, and raw service
+responses. Avoid `git add .` until every untracked file has been reviewed.
+
+Keep `.env`, secret headers, `sdkconfig*`, recordings, state files, logs, and
+build outputs untracked. Contributors should use a GitHub `noreply` email when
+they do not want a personal email address exposed in commit metadata.
+
 ## Pull requests
 1. Fork and create a branch. 2. Make focused commits with clear messages.
 3. Ensure the checks above pass. 4. Open a PR describing what changed and why.
