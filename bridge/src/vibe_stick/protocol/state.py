@@ -97,11 +97,11 @@ def now_time_text() -> str:
 
 def now_date_text() -> str:
     now = datetime.now()
-    return f"{now.strftime('%b').upper()} {now.day}"
+    return f"{now.strftime('%b')} {now.day}"
 
 
 def now_weekday_text() -> str:
-    return datetime.now().strftime("%A")
+    return f"{datetime.now().strftime('%a')}."
 
 
 def event_id(prefix: str) -> str:
