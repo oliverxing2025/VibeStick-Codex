@@ -10,7 +10,7 @@ VibeStick-Codex 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线�
 
 - [ ] M5 StickS3｜一根 USB-C 数据线｜一台电脑（最好是Mac）
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
-- [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 SiliconFlow，也可以改用其他兼容服务的 `base_url` 和模型名称。
+- [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 SiliconFlow，可通过这个 [SiliconFlow 推荐注册链接](https://cloud.siliconflow.cn/i/HgvY1CNk) 创建账户；也可以改用其他兼容服务的 `base_url` 和模型名称。
 
 
 ## 安装
