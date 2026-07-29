@@ -11,6 +11,7 @@
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
+    <a href="#privacy">Privacy</a> ·
     <a href="README.zh-CN.md">简体中文</a>
   </p>
   <p>
@@ -66,7 +67,7 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
 - [ ] M5Stack StickS3 and a USB-C data cable.
 - [ ] A Mac on the same network as the StickS3.
 - [ ] Wi-Fi name and password. The Wi-Fi must be 2.4 GHz; StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
-- [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible SiliconFlow API. You can create an account through this [SiliconFlow referral link](https://cloud.siliconflow.cn/i/HgvY1CNk), or use another compatible provider's `base_url` and model name instead.
+- [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible [SiliconFlow](https://cloud.siliconflow.cn/) API, or you can use another compatible provider's `base_url` and model name.
 
 Building the firmware needs ESP-IDF v5.5.x — a one-time toolchain install (~1 GB, a few minutes). The install steps below set it up for you; no need to pre-install. Reference: Espressif's [ESP-IDF v5.5.1 ESP32-S3 guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/get-started/index.html).
 
@@ -161,9 +162,12 @@ Aim for all required checks to pass. The StickS3 should show Wi-Fi, time, batter
 - Front blue, hold and release: record, transcribe, and enter into Codex without submitting.
 - Side, short press: approve all waiting Codex tasks across projects; if none are waiting, send the current input.
 - Side, double press: clear the current input text.
+- Side, fast triple click: switch to the Hourglass app in `ota_0` and restart, when a compatible dual-firmware layout is installed.
 - Side, hold: create a new Codex chat.
 
 For development without installing LaunchAgents, run `./scripts/dev.sh` from the repository root instead of `./scripts/install.sh`.
+
+See [Dual-firmware installation and switching](docs/MULTI_FIRMWARE.md) before installing or updating the Hourglass companion app.
 
 ## Troubleshooting
 
@@ -222,6 +226,7 @@ Empty values in `.env` generally mean "use the built-in default". `scripts/dev.s
 - `VIBE_STICK_BRIDGE_TOKEN`: shared token required whenever the bridge binds outside loopback, such as `0.0.0.0`.
 - `VIBE_STICK_MAX_RECORDING_AUDIO_BYTES`: max `/recording/audio` body size, default `2000000`.
 - `VIBE_STICK_RECORDING_USE_MAC_MIC`: set to `0` to disable Mac microphone fallback.
+- `VIBE_STICK_RETAIN_RECORDINGS`: recordings are deleted after processing by default; set to `1` only for intentional debugging.
 - `VIBE_STICK_AUTO_ENTER`: set to `1` to press Return after pasting.
 
 ### ASR option 1: SiliconFlow (recommended default)
@@ -266,6 +271,17 @@ VIBE_STICK_TRANSCRIBE_TIMEOUT_SECONDS=120
 ```
 
 The command receives the recording session JSON on stdin and should print the final transcript to stdout.
+
+## Privacy
+
+- The bridge has no analytics or telemetry.
+- State reads and control endpoints require the shared bridge token when the bridge is available on the LAN.
+- Local runtime files are restricted to the current macOS user.
+- Complete transcripts are not persisted, and recordings are deleted after processing by default.
+- StickS3-to-Mac traffic uses local HTTP and is not encrypted. Use only trusted private Wi-Fi and never expose port `8765` to the internet.
+- Cloud ASR sends recording audio to the configured provider.
+
+Read the complete [privacy and data-flow guide](docs/PRIVACY.md).
 
 ## Project layout
 
@@ -314,4 +330,4 @@ see [SECURITY.md](SECURITY.md) (please report privately).
 
 VibeStick-Codex is based on [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) and is distributed under the [MIT License](LICENSE). It focuses on M5Stack StickS3 and local Codex integration and is not an official M5Stack or OpenAI project.
 
-The landscape dashboard's visual design and information architecture were inspired by [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) and independently reimplemented with ESP-IDF and LVGL. No CodeBuddy source code or artwork is redistributed here. See [NOTICE](NOTICE) and the [third-party audit](docs/THIRD_PARTY_AUDIT.md) for details.
+The landscape dashboard's visual design and information architecture were inspired by [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) and independently reimplemented with ESP-IDF and LVGL. No CodeBuddy source code or artwork is redistributed here. The generated Noto Sans SC glyph subset remains under the bundled [SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt). See [NOTICE](NOTICE) and the [third-party audit](docs/THIRD_PARTY_AUDIT.md) for details.

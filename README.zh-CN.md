@@ -11,6 +11,7 @@
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
+    <a href="#隐私">隐私</a> ·
     <a href="README.md">English</a>
   </p>
   <p>
@@ -65,7 +66,7 @@ VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常
 
 - [ ] M5 StickS3｜一根 USB-C 数据线｜一台电脑（最好是Mac）
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
-- [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 SiliconFlow，可通过这个 [SiliconFlow 推荐注册链接](https://cloud.siliconflow.cn/i/HgvY1CNk) 创建账户；也可以改用其他兼容服务的 `base_url` 和模型名称。
+- [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 [SiliconFlow](https://cloud.siliconflow.cn/)；也可以改用其他兼容服务的 `base_url` 和模型名称。
 
 <p align="center"><strong>初始化 → 配置 → 烧录 → 安装 bridge → 验证</strong></p>
 
@@ -158,9 +159,12 @@ ls /dev/cu.*
 - 正面蓝键长按：录音；松开后转写并填入 Codex，等待手动发送。
 - 侧键短按：跨项目批准全部等待中的 Codex 任务；没有待批准任务时发送当前输入。
 - 侧键双击：清空当前输入框中的文本。
+- 侧键快速三连击：如果已经安装兼容的双固件布局，切换到 `ota_0` 中的沙漏并重启。
 - 侧键长按：新建 Codex 对话。
 
 开发调试时可以用 `./scripts/dev.sh` 替代 `./scripts/install.sh`，它会在当前终端里运行 bridge。
+
+安装或更新沙漏前，请先阅读[双固件安装与切换](docs/MULTI_FIRMWARE.zh-CN.md)。
 
 ## 常见问题排查
 
@@ -219,6 +223,7 @@ open -e .env
 - `VIBE_STICK_BRIDGE_TOKEN`：bridge 绑定到非 loopback 地址时必需的共享 token，例如 `0.0.0.0`。
 - `VIBE_STICK_MAX_RECORDING_AUDIO_BYTES`：`/recording/audio` 最大请求体大小，默认 `2000000`。
 - `VIBE_STICK_RECORDING_USE_MAC_MIC`：设为 `0` 可关闭 Mac 麦克风兜底。
+- `VIBE_STICK_RETAIN_RECORDINGS`：录音默认在处理后删除；只有确实需要调试时才设为 `1`。
 - `VIBE_STICK_AUTO_ENTER`：设为 `1` 会在粘贴后自动按 Return。
 
 ### ASR 方案 1：SiliconFlow（默认推荐）
@@ -263,6 +268,17 @@ VIBE_STICK_TRANSCRIBE_TIMEOUT_SECONDS=120
 ```
 
 这个命令会从 stdin 收到录音 session JSON，并应把最终转写文本打印到 stdout。
+
+## 隐私
+
+- Bridge 不包含统计分析或遥测。
+- Bridge 可从局域网访问时，状态读取和控制接口都需要共享 Token。
+- 本地运行文件只允许当前 macOS 用户访问。
+- 完整转写正文不会持久保存，录音默认在处理结束后删除。
+- StickS3 与 Mac 使用未加密的局域网 HTTP；只应使用可信私人 Wi-Fi，绝不能把 `8765` 端口暴露到互联网。
+- 使用云端 ASR 时，录音会发送给所配置的服务商。
+
+完整说明见[隐私与数据流](docs/PRIVACY.zh-CN.md)。
 
 ## 项目结构
 
@@ -311,4 +327,4 @@ idf.py build
 
 VibeStick-Codex 基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 [MIT License](LICENSE) 发布。本项目专注于 M5Stack StickS3 和本地 Codex 集成，不是 M5Stack 或 OpenAI 官方项目。
 
-横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
+横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。生成的 Noto Sans SC 字形子集继续适用仓库内附的 [SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt)。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。

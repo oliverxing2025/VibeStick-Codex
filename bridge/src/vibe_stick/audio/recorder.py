@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from vibe_stick.audio.transcriber import TranscriptionAdapter
-from vibe_stick.config.paths import RECORDINGS_DIR
+from vibe_stick.config.paths import (
+    RECORDINGS_DIR,
+    ensure_private_directory,
+    restrict_private_file,
+    write_private_text,
+)
 from vibe_stick.desktop.hud import hide_hud, show_hud
 from vibe_stick.desktop.codex_control import CodexDesktopController
 from vibe_stick.paste.input_injector import MacPasteInjector
@@ -155,7 +160,7 @@ class RecordingController:
             self._save()
             return self.session
 
-        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(RECORDINGS_DIR)
         sid = self.session.session_id or session_id or uuid.uuid4().hex
         audio_file = RECORDINGS_DIR / f"{sid}.wav"
         with wave.open(str(audio_file), "wb") as wav:
@@ -163,6 +168,7 @@ class RecordingController:
             wav.setsampwidth(bits_per_sample // 8)
             wav.setframerate(sample_rate)
             wav.writeframes(pcm)
+        restrict_private_file(audio_file)
 
         self.session.audio_file = str(audio_file)
         self.session.audio_source = "sticks3_pcm"
@@ -319,10 +325,12 @@ class RecordingController:
         )
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.session.to_jsonable(), indent=2) + "\n")
+        payload = self.session.to_jsonable()
+        payload["transcript"] = ""
+        write_private_text(self.path, json.dumps(payload, indent=2) + "\n")
 
     def _save_stop_result(self) -> None:
+        self._apply_recording_retention()
         self._save()
         print(
             "recording stop result "
@@ -335,6 +343,21 @@ class RecordingController:
             f"message={self.session.message}",
             flush=True,
         )
+
+    def _apply_recording_retention(self) -> None:
+        if not self.session.audio_file:
+            return
+        audio_path = Path(self.session.audio_file)
+        if _env_bool("VIBE_STICK_RETAIN_RECORDINGS", default=False):
+            restrict_private_file(audio_path)
+            return
+        try:
+            if audio_path.resolve().parent != RECORDINGS_DIR.resolve():
+                return
+            audio_path.unlink(missing_ok=True)
+            self.session.audio_file = ""
+        except OSError as exc:
+            print(f"recording cleanup failed path={audio_path} error={exc}", flush=True)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -462,7 +485,7 @@ class MacMicRecorder:
         if self.process and self.process.poll() is None:
             return (False, self.audio_file, "A recording session is already active")
 
-        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(RECORDINGS_DIR)
         self.audio_file = RECORDINGS_DIR / f"{session_id}.m4a"
         binary = self._ensure_helper_binary()
         if binary is None:
@@ -513,6 +536,7 @@ class MacMicRecorder:
             return (False, audio_file, message)
         if audio_file is None or not audio_file.exists() or audio_file.stat().st_size == 0:
             return (False, audio_file, "Mic recorder produced no audio")
+        restrict_private_file(audio_file)
         return (True, audio_file, "Recording stopped")
 
     def _ensure_helper_binary(self) -> Path | None:

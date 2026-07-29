@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -eu
+umask 077
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SETUP_PATH="$ROOT_DIR/scripts/setup.sh"
@@ -91,11 +92,14 @@ fi
 
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$LAUNCH_AGENTS_DIR"
+chmod 700 "$CONFIG_DIR"
 rm -rf "$RUNTIME_DIR"
 mkdir -p "$RUNTIME_DIR"
+chmod 700 "$RUNTIME_DIR"
 cp -R "$ROOT_DIR/bridge" "$RUNTIME_DIR/bridge"
 if [ -f "$ENV_PATH" ]; then
   cp "$ENV_PATH" "$CONFIG_DIR/.env"
+  chmod 600 "$CONFIG_DIR/.env"
 fi
 swiftc "$HUD_SOURCE_PATH" -o "$HUD_BINARY_PATH" -framework AppKit -framework QuartzCore
 cat > "$RUNNER_PATH" <<RUNNER
@@ -166,6 +170,9 @@ cat > "$HUD_PLIST_PATH" <<PLIST
 </dict>
 </plist>
 PLIST
+
+chmod 700 "$RUNNER_PATH"
+chmod 600 "$PLIST_PATH" "$HUD_PLIST_PATH"
 
 launchctl bootout "gui/$(id -u)" "$PLIST_PATH" >/dev/null 2>&1 || true
 launchctl bootout "gui/$(id -u)" "$HUD_PLIST_PATH" >/dev/null 2>&1 || true

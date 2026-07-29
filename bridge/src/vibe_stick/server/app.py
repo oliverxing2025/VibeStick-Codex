@@ -24,6 +24,7 @@ from vibe_stick.config.paths import (
     STATE_PATH,
     TASK_STATS_PATH,
     ensure_app_support,
+    write_private_text,
 )
 from vibe_stick.desktop.hud import hide_hud
 from vibe_stick.desktop.codex_control import CodexDesktopController
@@ -170,11 +171,17 @@ class BridgeStateStore:
                 message="",
             )
             self._save_state_locked()
-        return {"recording": session.to_jsonable(), "state": self.get_state().to_jsonable()}
+        return {
+            "recording": _recording_transport_payload(session),
+            "state": self.get_state().to_jsonable(),
+        }
 
     def stop_recording(self, request: dict[str, Any] | None = None) -> dict[str, Any]:
         session = self.recording.stop(request)
-        return {"recording": session.to_jsonable(), "state": self.get_state().to_jsonable()}
+        return {
+            "recording": _recording_transport_payload(session),
+            "state": self.get_state().to_jsonable(),
+        }
 
     def upload_recording_audio(
         self,
@@ -192,7 +199,10 @@ class BridgeStateStore:
             channels=channels,
             bits_per_sample=bits_per_sample,
         )
-        return {"recording": session.to_jsonable(), "state": self.get_state().to_jsonable()}
+        return {
+            "recording": _recording_transport_payload(session),
+            "state": self.get_state().to_jsonable(),
+        }
 
     def _refresh_providers_locked(self) -> None:
         codex_observation = observe_codex(self._project_root)
@@ -319,13 +329,12 @@ class BridgeStateStore:
             return 0, "", ""
 
     def _save_task_stats(self) -> None:
-        TASK_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "local_date": self._task_stats_day,
             "finished_tasks": self._finished_tasks,
             "last_finished_event_id": self._last_finished_event_id,
         }
-        TASK_STATS_PATH.write_text(json.dumps(payload, indent=2) + "\n")
+        write_private_text(TASK_STATS_PATH, json.dumps(payload, indent=2) + "\n")
 
     def _load_state(self) -> VibeStickState:
         try:
@@ -334,8 +343,10 @@ class BridgeStateStore:
             return default_state()
 
     def _save_state_locked(self) -> None:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(self._state.to_jsonable(), indent=2) + "\n")
+        write_private_text(
+            STATE_PATH,
+            json.dumps(self._state.to_jsonable(), indent=2) + "\n",
+        )
 
 
 def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
@@ -343,9 +354,14 @@ def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
         server_version = "VibeStick/0.1"
 
         def do_GET(self) -> None:
-            if self.path == "/state":
+            parsed = urlparse(self.path)
+            if parsed.path in _protected_paths() and not self._is_authorized():
+                self._send_error(HTTPStatus.UNAUTHORIZED, "Unauthorized")
+                return
+
+            if parsed.path == "/state":
                 self._send_json(_with_bridge_metadata(store.get_state().to_jsonable()))
-            elif self.path == "/health":
+            elif parsed.path == "/health":
                 self._send_json(
                     {
                         "ok": True,
@@ -467,12 +483,20 @@ def run_server(host: str, port: int) -> None:
 
 def _protected_paths() -> set[str]:
     return {
+        "/state",
         "/event",
         "/quota/refresh",
         "/recording/start",
         "/recording/audio",
         "/recording/stop",
     }
+
+
+def _recording_transport_payload(session: Any) -> dict[str, Any]:
+    payload = session.to_jsonable()
+    payload["transcript"] = ""
+    payload["audio_file"] = ""
+    return payload
 
 
 def _bridge_token() -> str:
