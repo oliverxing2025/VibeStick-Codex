@@ -8,11 +8,11 @@ from typing import Any
 from vibe_stick.config.paths import HUD_STATE_PATH, ensure_app_support
 
 HUD_TEXT = {
-    "listening": "正在聆听",
-    "sending": "正在发送",
-    "transcribing": "正在识别",
-    "unclear": "未听清",
-    "failed": "识别失败",
+    "listening": "Listening",
+    "sending": "Sending",
+    "transcribing": "Transcribing",
+    "unclear": "No clear speech",
+    "failed": "Transcription failed",
 }
 
 
