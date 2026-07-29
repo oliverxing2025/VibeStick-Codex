@@ -11,7 +11,7 @@ This project is based on [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/Vi
 - [ ] M5Stack StickS3 and a USB-C data cable.
 - [ ] A Mac on the same network as the StickS3.
 - [ ] Wi-Fi name and password. The Wi-Fi must be 2.4 GHz; StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
-- [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible SiliconFlow API, but you can use another compatible provider's `base_url` and model name instead.
+- [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible SiliconFlow API. You can create an account through this [SiliconFlow referral link](https://cloud.siliconflow.cn/i/HgvY1CNk), or use another compatible provider's `base_url` and model name instead.
 
 Building the firmware needs ESP-IDF v5.5.x — a one-time toolchain install (~1 GB, a few minutes). The install steps below set it up for you; no need to pre-install. Reference: Espressif's [ESP-IDF v5.5.1 ESP32-S3 guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/get-started/index.html).
 
