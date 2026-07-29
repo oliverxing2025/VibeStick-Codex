@@ -2,8 +2,6 @@
 
 [中文说明](README.zh-CN.md)
 
-![VibeStick voice input flow showing StickS3 recording states and Mac HUD](assets/brand/voice-input-preview.png)
-
 VibeStick turns an M5Stack StickS3 into a tiny Codex terminal: live status, quota remaining, usage consumed, today's tokens, alerts, and push-to-talk transcription entered into Codex for manual submission.
 
 This branch targets M5Stack StickS3 and integrates local Codex only. It is not an official M5Stack or OpenAI project.
@@ -13,7 +11,7 @@ This branch targets M5Stack StickS3 and integrates local Codex only. It is not a
 - [ ] M5Stack StickS3 and a USB-C data cable.
 - [ ] A Mac on the same network as the StickS3.
 - [ ] Wi-Fi name and password. The Wi-Fi must be 2.4 GHz; StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
-- [ ] An ASR API key for speech transcription. Recommended: SiliconFlow at <https://cloud.siliconflow.cn/i/7ZCoy9fU>. It works directly in China, has free quota, and is OpenAI-compatible. The demo video uses SiliconFlow. You can also use another OpenAI-compatible ASR provider's `base_url` and model name instead.
+- [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible SiliconFlow API, but you can use another compatible provider's `base_url` and model name instead.
 
 Building the firmware needs ESP-IDF v5.5.x — a one-time toolchain install (~1 GB, a few minutes). The install steps below set it up for you; no need to pre-install. Reference: Espressif's [ESP-IDF v5.5.1 ESP32-S3 guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/get-started/index.html).
 
@@ -152,7 +150,7 @@ open -e .env
 
 ### Transcription fails or times out with SSL/network errors
 
-The ASR provider is usually unreachable from your current network. For users in China, try SiliconFlow at <https://cloud.siliconflow.cn/i/7ZCoy9fU>. Otherwise configure a reachable OpenAI-compatible ASR provider or your network proxy.
+The ASR provider is usually unreachable from your current network. Configure a reachable OpenAI-compatible ASR provider or your network proxy.
 
 ## Configuration
 
