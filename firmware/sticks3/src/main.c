@@ -1912,6 +1912,7 @@ static void side_button_triple_click_cb(void *button_handle, void *usr_data)
 {
     (void)button_handle;
     (void)usr_data;
+    ESP_LOGI(TAG, "side button triple click detected");
     queue_event(VIBE_STICK_EVENT_SIDE_TRIPLE);
 }
 
@@ -1955,6 +1956,16 @@ static esp_err_t init_button(void)
     button_handle_t button = NULL;
     button_handle_t side_button = NULL;
     const button_config_t button_config = {0};
+    const button_config_t side_button_config = {
+        /*
+         * The component default is only 180 ms between clicks, which makes a
+         * deliberate three-click gesture very easy to split into unrelated
+         * single/double clicks. Keep the front button unchanged, but give the
+         * side button a human-friendly multi-click window.
+         */
+        .short_press_time = 380,
+        .long_press_time = 500,
+    };
     const button_gpio_config_t gpio_config = {
         .gpio_num = PIN_BUTTON_FRONT,
         .active_level = 0,
@@ -1980,7 +1991,7 @@ static esp_err_t init_button(void)
         .active_level = 0,
         .enable_power_save = false,
     };
-    ESP_RETURN_ON_ERROR(iot_button_new_gpio_device(&button_config, &side_gpio_config, &side_button), TAG, "side button");
+    ESP_RETURN_ON_ERROR(iot_button_new_gpio_device(&side_button_config, &side_gpio_config, &side_button), TAG, "side button");
     ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_SINGLE_CLICK, NULL,
                                                side_button_single_click_cb, NULL),
                         TAG, "side button single");
@@ -2095,10 +2106,12 @@ static void app_task(void *arg)
         }
         if (event.type == VIBE_STICK_EVENT_SIDE_TRIPLE) {
             const esp_partition_t *running = esp_ota_get_running_partition();
-            const esp_partition_t *next =
-                esp_ota_get_next_update_partition(NULL);
+            const esp_partition_t *next = esp_partition_find_first(
+                ESP_PARTITION_TYPE_APP,
+                ESP_PARTITION_SUBTYPE_APP_OTA_0,
+                NULL);
             if (!running || !next || next == running) {
-                ESP_LOGE(TAG, "app switch target unavailable");
+                ESP_LOGE(TAG, "hourglass partition ota_0 unavailable");
                 continue;
             }
             esp_err_t err = esp_ota_set_boot_partition(next);

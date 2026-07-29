@@ -5,7 +5,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from vibe_stick.config.paths import HUD_STATE_PATH, ensure_app_support
+from vibe_stick.config.paths import (
+    HUD_STATE_PATH,
+    ensure_app_support,
+    restrict_private_file,
+    write_private_text,
+)
 
 HUD_TEXT = {
     "listening": "Listening",
@@ -50,8 +55,9 @@ def _write_hud_state(payload: dict[str, Any]) -> None:
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
     tmp_path = HUD_STATE_PATH.with_suffix(".json.tmp")
     try:
-        tmp_path.write_text(data, encoding="utf-8")
+        write_private_text(tmp_path, data)
         tmp_path.replace(HUD_STATE_PATH)
+        restrict_private_file(HUD_STATE_PATH)
     except OSError as exc:
         print(f"hud state write failed path={HUD_STATE_PATH} error={exc}", flush=True)
         _cleanup_tmp(tmp_path)
