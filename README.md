@@ -59,6 +59,8 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
   </tr>
 </table>
 
+The landscape activity matrix is split into two independent quota regions: `5H` on the left shows the remaining Codex five-hour quota, while `1W` on the right shows the remaining weekly quota. A blue divider separates the two periods, and the finer-grained cells provide a more precise visual percentage. The `7D` value above the matrix is the number of days remaining until the weekly quota resets.
+
 > [!NOTE]
 > These are product renders. Minor details may differ from the current on-device firmware.
 
