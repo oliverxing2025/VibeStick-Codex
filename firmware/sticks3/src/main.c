@@ -160,10 +160,8 @@ static bool s_wifi_connected;
 static bool s_recording_overlay_visible;
 static bool s_long_press_active;
 static bool s_side_long_press_active;
-static bool s_startup_active;
-static bool s_ignore_startup_button_release;
 static bool s_landscape_active;
-static bool s_orientation_enabled;
+static bool s_orientation_enabled = true;
 static char s_last_alert_event_id[56];
 static char s_last_alert_type[24];
 static bool s_alert_sound_baseline_ready;
@@ -192,7 +190,6 @@ static lv_obj_t *s_recording_wave_group;
 static lv_obj_t *s_recording_wave_bars[5];
 static lv_obj_t *s_recording_title;
 static lv_obj_t *s_recording_hint;
-static lv_obj_t *s_startup_screen;
 static lv_obj_t *s_seconds_label;
 static lv_obj_t *s_days_left_label;
 static lv_obj_t *s_percent_left_label;
@@ -289,7 +286,7 @@ static const lv_point_precise_t s_battery_bolt_points[] = {
 };
 
 static void render_state(void);
-static void create_portrait_ui(lv_obj_t *screen, bool with_startup);
+static void create_portrait_ui(lv_obj_t *screen);
 
 static void queue_event(agent_event_type_t type)
 {
@@ -541,24 +538,24 @@ static void create_provider_icon(lv_obj_t *parent)
 static const char *status_text_for(const char *status)
 {
     if (strcmp(status, "RUNNING") == 0) {
-        return "进行中";
+        return "RUNNING";
     }
     if (strcmp(status, "DONE") == 0) {
-        return "已完成";
+        return "DONE";
     }
     if (strcmp(status, "APPROVAL") == 0) {
-        return "需要确认";
+        return "WAITING";
     }
     if (strcmp(status, "ERROR") == 0) {
-        return "错误";
+        return "ERROR";
     }
     if (strcmp(status, "OFFLINE") == 0) {
-        return "离线";
+        return "OFFLINE";
     }
     if (strcmp(status, "IDLE") == 0 || strcmp(status, "UNKNOWN") == 0) {
-        return "待命中";
+        return "IDLE";
     }
-    return "待命中";
+    return "IDLE";
 }
 
 static void set_battery_ui(int battery_value, bool charging, bool usb_powered)
@@ -899,59 +896,16 @@ static void switch_display_orientation(bool landscape)
     if (landscape) {
         create_landscape_ui(new_screen);
     } else {
-        create_portrait_ui(new_screen, false);
+        create_portrait_ui(new_screen);
     }
     lv_screen_load(new_screen);
     lv_obj_delete(old_screen);
-    s_startup_screen = NULL;
     lvgl_unlock();
     ESP_LOGI(TAG, "display orientation=%s", landscape ? "landscape" : "portrait");
     render_state();
 }
 
-static void dismiss_startup_screen(void)
-{
-    lvgl_lock();
-    if (s_startup_screen) {
-        lv_obj_delete(s_startup_screen);
-        s_startup_screen = NULL;
-    }
-    s_startup_active = false;
-    s_orientation_enabled = true;
-    lvgl_unlock();
-    render_state();
-}
-
-static void create_startup_screen(lv_obj_t *screen)
-{
-    s_startup_screen = make_fullscreen_overlay(screen);
-    lv_obj_move_foreground(s_startup_screen);
-
-    lv_obj_t *icon = lv_image_create(s_startup_screen);
-    lv_image_set_src(icon, &vibe_stick_provider_codex_icon_40);
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -56);
-
-    lv_obj_t *title = make_label(s_startup_screen, "Codex", &lv_font_montserrat_20,
-                                 lv_color_hex(0xf4f7ff), 120, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -4);
-
-    lv_obj_t *subtitle = make_label(s_startup_screen, "VOICE ASSISTANT", &lv_font_montserrat_10,
-                                    lv_color_hex(0x27c9ff), 120, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(subtitle, LV_ALIGN_CENTER, 0, 22);
-
-    lv_obj_t *button_dot = make_plain_obj(s_startup_screen, 9, 9,
-                                          lv_color_hex(0x168cff), LV_OPA_COVER,
-                                          LV_RADIUS_CIRCLE);
-    lv_obj_align(button_dot, LV_ALIGN_BOTTOM_MID, 0, -45);
-
-    lv_obj_t *hint = make_label(s_startup_screen, "PRESS BLUE BUTTON",
-                                &lv_font_montserrat_10, lv_color_hex(0x8aa4c8),
-                                120, LV_TEXT_ALIGN_CENTER);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -23);
-    s_startup_active = true;
-}
-
-static void create_portrait_ui(lv_obj_t *screen, bool with_startup)
+static void create_portrait_ui(lv_obj_t *screen)
 {
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x050608), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
@@ -996,7 +950,7 @@ static void create_portrait_ui(lv_obj_t *screen, bool with_startup)
                                   lv_color_hex(0xf3f4f6), 77, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_provider_label, LV_ALIGN_TOP_LEFT, 55, 37);
 
-    s_status_label = make_label(screen, "待命中", FONT_CN,
+    s_status_label = make_label(screen, "IDLE", &lv_font_montserrat_12,
                                 lv_color_hex(0xf3f4f6), 66, LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 71, 59);
     lv_obj_align_to(s_status_dot, s_status_label, LV_ALIGN_OUT_LEFT_MID, -4, 0);
@@ -1029,14 +983,11 @@ static void create_portrait_ui(lv_obj_t *screen, bool with_startup)
                                   lv_color_hex(0x8b9098), 120, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -22);
 
-    if (with_startup) {
-        create_startup_screen(screen);
-    }
 }
 
 static void create_ui(void)
 {
-    create_portrait_ui(lv_display_get_screen_active(s_display), true);
+    create_portrait_ui(lv_display_get_screen_active(s_display));
 }
 
 static void set_status_color(const agent_provider_config_t *provider, const char *status)
@@ -2055,7 +2006,7 @@ static void orientation_task(void *arg)
     int log_countdown = 0;
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(ORIENTATION_SAMPLE_MS));
-        if (!s_orientation_enabled || s_startup_active ||
+        if (!s_orientation_enabled ||
             s_recording_overlay_visible || vibe_audio_is_recording()) {
             stable_samples = 0;
             continue;
@@ -2078,7 +2029,7 @@ static void orientation_task(void *arg)
         }
         // StickS3's BMI270 Y axis follows the display's long edge:
         // Y-dominant gravity is landscape, X-dominant gravity is portrait.
-        // Keep this mapping absolute so the startup pose cannot reverse it.
+        // Keep this mapping absolute so the initial device pose cannot reverse it.
         bool wants_landscape = ay > ax;
         if (wants_landscape != candidate_landscape) {
             candidate_landscape = wants_landscape;
@@ -2132,20 +2083,6 @@ static void app_task(void *arg)
                      running->label, next->label);
             vTaskDelay(pdMS_TO_TICKS(120));
             esp_restart();
-        }
-        if (s_startup_active && event.type != VIBE_STICK_EVENT_POLL_STATE) {
-            if (event.type == VIBE_STICK_EVENT_SHORT_PRESS ||
-                event.type == VIBE_STICK_EVENT_DOUBLE_CLICK ||
-                event.type == VIBE_STICK_EVENT_LONG_START) {
-                s_ignore_startup_button_release =
-                    event.type == VIBE_STICK_EVENT_LONG_START;
-                dismiss_startup_screen();
-            }
-            continue;
-        }
-        if (s_ignore_startup_button_release && event.type == VIBE_STICK_EVENT_LONG_STOP) {
-            s_ignore_startup_button_release = false;
-            continue;
         }
         switch (event.type) {
         case VIBE_STICK_EVENT_POLL_STATE:
