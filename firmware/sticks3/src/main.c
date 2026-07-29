@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,8 +48,10 @@
 #define LVGL_DRAW_BUF_LINES 24
 #define LVGL_TICK_PERIOD_MS 10
 #define BATTERY_FILL_MAX_WIDTH 20
-#define ACTIVITY_COLUMNS 29
+#define ACTIVITY_COLUMNS 57
 #define ACTIVITY_ROWS 3
+#define ACTIVITY_SEGMENT_COLUMNS 28
+#define ACTIVITY_WEEK_START_COLUMN 29
 #define ACTIVITY_FRAME_MS 36
 #define ORIENTATION_SAMPLE_MS 230
 #define ORIENTATION_STABLE_SAMPLES 3
@@ -198,12 +201,14 @@ static lv_obj_t *s_date_group;
 static lv_obj_t *s_date_label;
 static lv_obj_t *s_date_separator;
 static lv_obj_t *s_weekday_label;
+static lv_obj_t *s_activity_divider;
 static lv_obj_t *s_run_count_label;
 static lv_obj_t *s_ask_count_label;
 static lv_obj_t *s_new_count_label;
 static lv_obj_t *s_activity_cells[ACTIVITY_ROWS][ACTIVITY_COLUMNS];
 static lv_timer_t *s_activity_timer;
-static int s_activity_active_columns = -1;
+static int s_activity_5h_active_columns = -1;
+static int s_activity_7d_active_columns = -1;
 
 static agent_state_t s_state = {
     .time = "--:--",
@@ -677,6 +682,37 @@ static lv_color_t scale_activity_color(uint32_t color, float brightness)
     return lv_color_make((uint8_t)red, (uint8_t)green, (uint8_t)blue);
 }
 
+static int quota_segment_columns(int remaining, bool valid)
+{
+    if (!valid) {
+        return 0;
+    }
+    if (remaining < 0) {
+        remaining = 0;
+    } else if (remaining > 100) {
+        remaining = 100;
+    }
+    return (remaining * ACTIVITY_SEGMENT_COLUMNS + 99) / 100;
+}
+
+static float activity_particle_breath(int row, int col, int64_t elapsed_us)
+{
+    uint32_t seed =
+        (uint32_t)(row + 1) * 0x9e3779b9u ^
+        (uint32_t)(col + 1) * 0x85ebca6bu;
+    seed ^= seed >> 16;
+    seed *= 0x7feb352du;
+    seed ^= seed >> 15;
+
+    const uint32_t cycle_step =
+        (uint32_t)(elapsed_us / 3125LL) & 0x3ffu;
+    const uint32_t phase = (cycle_step + (seed & 0x3ffu)) & 0x3ffu;
+    const float triangle =
+        phase < 512u ? (float)phase / 511.0f
+                     : (float)(1023u - phase) / 511.0f;
+    return triangle * triangle * (3.0f - 2.0f * triangle);
+}
+
 static void activity_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
@@ -687,62 +723,62 @@ static void activity_timer_cb(lv_timer_t *timer)
         0xc8ff43, 0x72d9ff, 0xbfaeff,
     };
     static const float minimum_brightness[ACTIVITY_ROWS] = {
-        0.84f, 0.86f, 0.86f,
+        0.72f, 0.74f, 0.74f,
     };
     static const float pulse_amplitude[ACTIVITY_ROWS] = {
-        0.16f, 0.14f, 0.14f,
-    };
-    static const float row_delay_cycles[ACTIVITY_ROWS] = {
-        0.0f, 60.0f / 1050.0f, 110.0f / 1050.0f,
+        0.28f, 0.26f, 0.26f,
     };
     const int64_t elapsed_us = esp_timer_get_time();
-    const float cycle_time =
-        (float)(elapsed_us % 1050000LL) / 1050000.0f;
-    const float column_delay_cycles = 220.0f / 1050.0f;
-    const float gaussian_sigma = 0.18f;
-    const float gaussian_denominator =
-        2.0f * gaussian_sigma * gaussian_sigma;
     const provider_display_state_t *display_state =
         current_provider_display_state();
-    int active_columns = 0;
-    if (display_state->quota_7d_valid) {
-        int remaining = display_state->quota_7d;
-        if (remaining < 0) {
-            remaining = 0;
-        } else if (remaining > 100) {
-            remaining = 100;
-        }
-        active_columns =
-            (remaining * ACTIVITY_COLUMNS + 99) / 100;
-    }
+    const int five_hour_active_columns =
+        quota_segment_columns(display_state->quota_5h,
+                              display_state->quota_5h_valid);
+    const int weekly_active_columns =
+        quota_segment_columns(display_state->quota_7d,
+                              display_state->quota_7d_valid);
 
-    if (active_columns != s_activity_active_columns) {
+    if (five_hour_active_columns != s_activity_5h_active_columns ||
+        weekly_active_columns != s_activity_7d_active_columns) {
         for (int row = 0; row < ACTIVITY_ROWS; ++row) {
-            for (int col = active_columns; col < ACTIVITY_COLUMNS; ++col) {
-                lv_obj_set_style_bg_color(s_activity_cells[row][col],
-                                          lv_color_hex(0x30353a), 0);
-                lv_obj_set_style_border_color(s_activity_cells[row][col],
-                                              lv_color_hex(0x262a2e), 0);
+            for (int col = 0; col < ACTIVITY_COLUMNS; ++col) {
+                const bool active_5h =
+                    col < five_hour_active_columns;
+                const bool active_7d =
+                    col >= ACTIVITY_WEEK_START_COLUMN &&
+                    col < ACTIVITY_WEEK_START_COLUMN + weekly_active_columns;
+                if (!active_5h && !active_7d) {
+                    lv_obj_set_style_bg_color(s_activity_cells[row][col],
+                                              lv_color_hex(0x30353a), 0);
+                    lv_obj_set_style_border_color(s_activity_cells[row][col],
+                                                  lv_color_hex(0x262a2e), 0);
+                }
             }
         }
-        s_activity_active_columns = active_columns;
+        s_activity_5h_active_columns = five_hour_active_columns;
+        s_activity_7d_active_columns = weekly_active_columns;
     }
 
     for (int row = 0; row < ACTIVITY_ROWS; ++row) {
-        for (int col = 0; col < active_columns; ++col) {
-            float phase = cycle_time - col * column_delay_cycles -
-                          row_delay_cycles[row];
-            phase -= floorf(phase);
-            float distance = fminf(phase, 1.0f - phase);
-            float pulse = expf(-(distance * distance) / gaussian_denominator);
-            float brightness = minimum_brightness[row] +
-                               pulse * pulse_amplitude[row];
-            lv_color_t fill =
-                scale_activity_color(base_colors[row], brightness);
-            lv_color_t border =
-                scale_activity_color(base_colors[row], brightness * 0.90f);
-            lv_obj_set_style_bg_color(s_activity_cells[row][col], fill, 0);
-            lv_obj_set_style_border_color(s_activity_cells[row][col], border, 0);
+        for (int segment = 0; segment < 2; ++segment) {
+            const int start_column =
+                segment == 0 ? 0 : ACTIVITY_WEEK_START_COLUMN;
+            const int active_columns =
+                segment == 0 ? five_hour_active_columns : weekly_active_columns;
+            for (int local_col = 0; local_col < active_columns; ++local_col) {
+                const int col = start_column + local_col;
+                const float breath =
+                    activity_particle_breath(row, col, elapsed_us);
+                float brightness = minimum_brightness[row] +
+                                   breath * pulse_amplitude[row];
+                lv_color_t fill =
+                    scale_activity_color(base_colors[row], brightness);
+                lv_color_t border =
+                    scale_activity_color(base_colors[row], brightness * 0.86f);
+                lv_obj_set_style_bg_color(s_activity_cells[row][col], fill, 0);
+                lv_obj_set_style_border_color(s_activity_cells[row][col],
+                                              border, 0);
+            }
         }
     }
 }
@@ -785,17 +821,52 @@ static void layout_landscape_date_row(const char *date_text,
     lv_obj_set_size(s_weekday_label, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_update_layout(s_date_group);
     int32_t date_width = lv_obj_get_width(s_date_label);
-    lv_obj_set_pos(s_date_label, 6, 4);
-    lv_obj_set_pos(s_date_separator, 6 + date_width + separator_gap, 11);
+    int32_t weekday_width = lv_obj_get_width(s_weekday_label);
+    int32_t content_width =
+        date_width + separator_gap + separator_size + separator_gap +
+        weekday_width;
+    int32_t content_x = (LCD_V_RES - content_width) / 2;
+    lv_obj_set_pos(s_date_label, content_x, 4);
+    lv_obj_set_pos(s_date_separator,
+                   content_x + date_width + separator_gap, 11);
     lv_obj_set_pos(s_weekday_label,
-                   6 + date_width + separator_gap + separator_size +
+                   content_x + date_width + separator_gap + separator_size +
                        separator_gap,
                    4);
+    if (s_activity_divider) {
+        lv_obj_set_x(s_activity_divider,
+                     lv_obj_get_x(s_date_separator) + separator_size / 2);
+    }
     lv_obj_invalidate(s_date_group);
+}
+
+static void format_landscape_date_text(const char *source, char *target,
+                                       size_t target_size)
+{
+    snprintf(target, target_size, "%s", source);
+    if (strlen(target) >= 3) {
+        target[0] = (char)toupper((unsigned char)target[0]);
+        target[1] = (char)tolower((unsigned char)target[1]);
+        target[2] = (char)tolower((unsigned char)target[2]);
+    }
+}
+
+static void format_landscape_weekday_text(const char *source, char *target,
+                                          size_t target_size)
+{
+    if (strlen(source) < 3) {
+        snprintf(target, target_size, "---.");
+        return;
+    }
+    snprintf(target, target_size, "%c%c%c.",
+             toupper((unsigned char)source[0]),
+             tolower((unsigned char)source[1]),
+             tolower((unsigned char)source[2]));
 }
 
 static void create_landscape_ui(lv_obj_t *screen)
 {
+    s_activity_divider = NULL;
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x161a1e), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
 
@@ -815,7 +886,7 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_seconds_label = make_label(screen, "--", &lv_font_montserrat_16,
                                  lv_color_hex(0xc9d1d9), 38, LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_seconds_label, LV_ALIGN_TOP_LEFT, 134, 23);
-    s_days_left_label = make_label(screen, "--天", FONT_CN,
+    s_days_left_label = make_label(screen, "--D", &lv_font_montserrat_16,
                                    lv_color_hex(0xd8dde3), 38,
                                    LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_days_left_label, LV_ALIGN_TOP_LEFT, 134, 41);
@@ -842,33 +913,47 @@ static void create_landscape_ui(lv_obj_t *screen)
         lv_obj_align(*counter_values[i], LV_ALIGN_TOP_RIGHT, -4, 22 + i * 20);
     }
 
-    s_date_group = make_plain_obj(screen, LCD_V_RES, 28,
+    s_date_group = make_plain_obj(screen, LCD_V_RES, 34,
                                   lv_color_hex(0x161a1e), LV_OPA_TRANSP, 0);
     lv_obj_set_pos(s_date_group, 0, 74);
     lv_obj_remove_flag(s_date_group, LV_OBJ_FLAG_SCROLLABLE);
     s_date_label = make_label(s_date_group, "--- --", &lv_font_montserrat_14,
-                              lv_color_hex(0xf2f4f7), 61, LV_TEXT_ALIGN_LEFT);
+                              lv_color_hex(0xc9d1d9), 61, LV_TEXT_ALIGN_LEFT);
     s_date_separator = make_plain_obj(s_date_group, 3, 3,
                                       lv_color_hex(0x8e98a3),
                                       LV_OPA_COVER, LV_RADIUS_CIRCLE);
     s_weekday_label = make_label(s_date_group, "-------",
                                  &lv_font_montserrat_14,
                                  lv_color_hex(0xc9d1d9), 66, LV_TEXT_ALIGN_LEFT);
+    lv_obj_t *five_hour_hint =
+        make_label(s_date_group, "5H:", &lv_font_montserrat_12,
+                   lv_color_hex(0x41c7ff), 28, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(five_hour_hint, LV_ALIGN_BOTTOM_LEFT, 6, 0);
+    lv_obj_t *weekly_hint =
+        make_label(s_date_group, "1W:", &lv_font_montserrat_12,
+                   lv_color_hex(0x41c7ff), 28, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_align(weekly_hint, LV_ALIGN_BOTTOM_RIGHT, -6, 0);
     layout_landscape_date_row("--- --", "-------");
 
     for (int row = 0; row < ACTIVITY_ROWS; ++row) {
         for (int col = 0; col < ACTIVITY_COLUMNS; ++col) {
-            s_activity_cells[row][col] = make_plain_obj(screen, 7, 6,
+            s_activity_cells[row][col] = make_plain_obj(screen, 3, 4,
                                                         lv_color_hex(0x30353a),
-                                                        LV_OPA_COVER, 2);
+                                                        LV_OPA_COVER, 1);
             lv_obj_set_style_border_width(s_activity_cells[row][col], 1, 0);
             lv_obj_set_style_border_opa(s_activity_cells[row][col],
                                         LV_OPA_COVER, 0);
             lv_obj_set_style_border_color(s_activity_cells[row][col],
                                           lv_color_hex(0x262a2e), 0);
-            lv_obj_set_pos(s_activity_cells[row][col], 4 + col * 8, 108 + row * 7);
+            lv_obj_set_pos(s_activity_cells[row][col], 6 + col * 4,
+                           110 + row * 6);
         }
     }
+    s_activity_divider = make_plain_obj(screen, 1, 42,
+                                        lv_color_hex(0x41c7ff),
+                                        LV_OPA_COVER, 0);
+    lv_obj_set_y(s_activity_divider, 90);
+    layout_landscape_date_row("--- --", "-------");
     create_recording_overlay(screen);
     s_activity_timer = lv_timer_create(activity_timer_cb, ACTIVITY_FRAME_MS, NULL);
 }
@@ -876,6 +961,23 @@ static void create_landscape_ui(lv_obj_t *screen)
 static void switch_display_orientation(bool landscape, bool landscape_reverse)
 {
     lvgl_lock();
+    if (landscape && s_landscape_active) {
+        if (landscape_reverse == s_landscape_reverse) {
+            lvgl_unlock();
+            return;
+        }
+        ESP_ERROR_CHECK(esp_lcd_panel_mirror(
+            s_panel,
+            landscape_reverse ? false : true,
+            landscape_reverse ? true : false));
+        s_landscape_reverse = landscape_reverse;
+        lv_obj_invalidate(lv_display_get_screen_active(s_display));
+        lv_refr_now(s_display);
+        lvgl_unlock();
+        ESP_LOGI(TAG, "display orientation=%s mirror-only",
+                 landscape_reverse ? "landscape-left" : "landscape-right");
+        return;
+    }
     lv_obj_t *old_screen = lv_display_get_screen_active(s_display);
     if (s_activity_timer) {
         lv_timer_delete(s_activity_timer);
@@ -1069,10 +1171,10 @@ static void render_state(void)
         }
         lv_label_set_text(s_time_label, hour_minute);
         lv_label_set_text(s_seconds_label, seconds);
-        char days_left_text[12] = "--天";
+        char days_left_text[12] = "--D";
         if (display_state->quota_7d_reset_days_valid) {
             int days_left = display_state->quota_7d_reset_days;
-            snprintf(days_left_text, sizeof(days_left_text), "%d天", days_left);
+            snprintf(days_left_text, sizeof(days_left_text), "%dD", days_left);
         }
         lv_label_set_text(s_days_left_label, days_left_text);
         char percent_left_text[8] = "--%";
@@ -1082,9 +1184,15 @@ static void render_state(void)
                      percent_left);
         }
         lv_label_set_text(s_percent_left_label, percent_left_text);
-        layout_landscape_date_row(
+        char landscape_date[8];
+        char landscape_weekday[6];
+        format_landscape_date_text(
             s_state.date[0] ? s_state.date : "--- --",
-            s_state.weekday[0] ? s_state.weekday : "-------");
+            landscape_date, sizeof(landscape_date));
+        format_landscape_weekday_text(
+            s_state.weekday[0] ? s_state.weekday : "-------",
+            landscape_weekday, sizeof(landscape_weekday));
+        layout_landscape_date_row(landscape_date, landscape_weekday);
 
         const char *landscape_status = status_key;
         if (strcmp(status_key, "APPROVAL") == 0) {

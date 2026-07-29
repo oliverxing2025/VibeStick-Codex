@@ -59,8 +59,19 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
   </tr>
 </table>
 
+The landscape activity matrix is split into two independent quota regions: `5H` on the left shows the remaining Codex five-hour quota, while `1W` on the right shows the remaining weekly quota. A blue divider separates the two periods, and the finer-grained cells provide a more precise visual percentage. The `7D` value above the matrix is the number of days remaining until the weekly quota resets.
+
 > [!NOTE]
 > These are product renders. Minor details may differ from the current on-device firmware.
+
+## Platform support
+
+| Platform | Current support |
+| --- | --- |
+| **macOS** | Fully supports the documented setup, including the bridge, HUD, Codex desktop control, automatic paste, and Mac microphone fallback. |
+| **Windows** | End-to-end support is not available yet. The firmware can be built and flashed using Espressif's Windows toolchain, but a Windows bridge installer, HUD, Codex desktop control, and automatic paste integration have not been implemented. |
+
+The computer-integration steps below therefore target macOS. For firmware-only building and flashing on another platform, follow Espressif's instructions for that platform.
 
 ## Before you start
 
