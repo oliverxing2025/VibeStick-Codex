@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -10,15 +11,56 @@ from vibe_stick.codex.local_observer import (
     _daily_usage_session_files,
     _daily_used_percent,
     _daily_used_percent_from_samples,
+    _latest_quota_and_funds,
+    _quota_period_start,
     _quota_from_payload,
     _session_is_running,
     _session_is_waiting,
     _thread_id_from_session,
+    _weekly_usage_from_payload,
+    _token_total_since,
     waiting_thread_ids,
 )
 from vibe_stick.codex.quota import QuotaSnapshot
 from vibe_stick.protocol.state import AgentStatus
 from vibe_stick.providers.codex import observation_from_local_codex
+
+
+def _token_event(timestamp: datetime, total_tokens: int) -> dict[str, object]:
+    return {
+        "timestamp": timestamp.isoformat(),
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "total_tokens": total_tokens,
+                }
+            },
+        },
+    }
+
+
+def _quota_event(
+    timestamp: datetime,
+    used_percent: int,
+    limit_id: str,
+) -> dict[str, object]:
+    return {
+        "timestamp": timestamp.isoformat(),
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "rate_limits": {
+                "limit_id": limit_id,
+                "primary": {
+                    "used_percent": used_percent,
+                    "window_minutes": 10080,
+                    "resets_at": timestamp.timestamp() + 7 * 86400,
+                },
+            },
+        },
+    }
 
 
 class CodexProviderTests(unittest.TestCase):
@@ -137,6 +179,102 @@ class CodexProviderTests(unittest.TestCase):
                     _daily_usage_session_files(sample_start),
                     [live_path, archived_path],
                 )
+
+    def test_period_tokens_subtract_session_baseline(self) -> None:
+        period_start = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions = root / "sessions"
+            archived = root / "archived_sessions"
+            sessions.mkdir()
+            archived.mkdir()
+            cross_midnight = sessions / "cross-midnight.jsonl"
+            today_only = archived / "today-only.jsonl"
+            cross_midnight.write_text(
+                "\n".join(
+                    json.dumps(event)
+                    for event in (
+                        _token_event(period_start - timedelta(minutes=1), 1000),
+                        _token_event(period_start + timedelta(hours=1), 1250),
+                        _token_event(period_start + timedelta(hours=2), 1600),
+                    )
+                )
+                + "\n"
+            )
+            today_only.write_text(
+                json.dumps(
+                    _token_event(period_start + timedelta(hours=3), 75)
+                )
+                + "\n"
+            )
+            fresh_timestamp = (period_start + timedelta(hours=4)).timestamp()
+            os.utime(cross_midnight, (fresh_timestamp, fresh_timestamp))
+            os.utime(today_only, (fresh_timestamp, fresh_timestamp))
+
+            with (
+                mock.patch(
+                    "vibe_stick.codex.local_observer.SESSIONS_DIR",
+                    sessions,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer.ARCHIVED_SESSIONS_DIR",
+                    archived,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._TOKEN_CACHE_PERIOD_START",
+                    None,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._TOKEN_FILE_CACHE",
+                    {},
+                ),
+            ):
+                self.assertEqual(_token_total_since(period_start), 675)
+
+    def test_period_tokens_restart_at_new_quota_cycle(self) -> None:
+        old_start = datetime(2026, 7, 22, tzinfo=timezone.utc)
+        new_start = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions = root / "sessions"
+            archived = root / "archived_sessions"
+            sessions.mkdir()
+            archived.mkdir()
+            path = sessions / "cycle.jsonl"
+            path.write_text(
+                "\n".join(
+                    json.dumps(event)
+                    for event in (
+                        _token_event(old_start + timedelta(hours=1), 1000),
+                        _token_event(new_start - timedelta(minutes=1), 1800),
+                        _token_event(new_start + timedelta(hours=1), 1950),
+                    )
+                )
+                + "\n"
+            )
+            fresh_timestamp = (new_start + timedelta(hours=2)).timestamp()
+            os.utime(path, (fresh_timestamp, fresh_timestamp))
+
+            with (
+                mock.patch(
+                    "vibe_stick.codex.local_observer.SESSIONS_DIR",
+                    sessions,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer.ARCHIVED_SESSIONS_DIR",
+                    archived,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._TOKEN_CACHE_PERIOD_START",
+                    None,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._TOKEN_FILE_CACHE",
+                    {},
+                ),
+            ):
+                self.assertEqual(_token_total_since(old_start), 1950)
+                self.assertEqual(_token_total_since(new_start), 150)
 
     def test_session_running_count_uses_task_lifecycle(self) -> None:
         now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
@@ -330,6 +468,85 @@ class CodexProviderTests(unittest.TestCase):
         self.assertIsNotNone(quota)
         self.assertEqual(quota.quota_7d_remaining, 83)
         self.assertEqual(quota.quota_7d_reset_days, 7)
+        self.assertEqual(
+            _quota_period_start(quota),
+            now + timedelta(seconds=1) - timedelta(days=1),
+        )
+
+    def test_special_model_quota_does_not_replace_main_codex_quota(self) -> None:
+        now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        payload = {
+            "type": "token_count",
+            "rate_limits": {
+                "limit_id": "codex_bengalfox",
+                "limit_name": "GPT-5.3-Codex-Spark",
+                "primary": {
+                    "used_percent": 0,
+                    "window_minutes": 10080,
+                    "resets_at": now.timestamp() + 7 * 86400,
+                },
+            },
+        }
+
+        self.assertIsNone(_quota_from_payload(payload, now, now))
+        self.assertIsNone(_weekly_usage_from_payload(payload))
+
+    def test_main_codex_quota_accepts_explicit_or_legacy_limit_id(self) -> None:
+        now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        for limit_id in ("codex", None):
+            rate_limits = {
+                "primary": {
+                    "used_percent": 36,
+                    "window_minutes": 10080,
+                    "resets_at": now.timestamp() + 7 * 86400,
+                },
+            }
+            if limit_id is not None:
+                rate_limits["limit_id"] = limit_id
+            payload = {"type": "token_count", "rate_limits": rate_limits}
+
+            quota = _quota_from_payload(payload, now, now)
+
+            self.assertIsNotNone(quota)
+            self.assertEqual(quota.quota_7d_remaining, 64)
+
+    def test_latest_quota_can_come_from_recent_archived_session(self) -> None:
+        now = datetime(2026, 7, 29, 10, 0, tzinfo=timezone.utc)
+        active_path = Path("/tmp/active.jsonl")
+        archived_path = Path("/tmp/archived.jsonl")
+        events = {
+            active_path: [
+                _quota_event(
+                    now - timedelta(days=1),
+                    12,
+                    "codex",
+                )
+            ],
+            archived_path: [
+                _quota_event(
+                    now - timedelta(minutes=5),
+                    37,
+                    "codex",
+                ),
+                _quota_event(
+                    now - timedelta(minutes=1),
+                    0,
+                    "codex_bengalfox",
+                ),
+            ],
+        }
+
+        with mock.patch(
+            "vibe_stick.codex.local_observer._tail_json_events",
+            side_effect=lambda path: events[path],
+        ):
+            active_quota, _ = _latest_quota_and_funds([active_path], now)
+            archived_quota, _ = _latest_quota_and_funds([archived_path], now)
+
+        self.assertIsNotNone(active_quota)
+        self.assertIsNotNone(archived_quota)
+        self.assertGreater(archived_quota[0], active_quota[0])
+        self.assertEqual(archived_quota[1].quota_7d_remaining, 63)
 
     def test_codex_local_observation_maps_to_provider_observation(self) -> None:
         timestamp = datetime(2026, 6, 28, 9, 41, tzinfo=timezone.utc)

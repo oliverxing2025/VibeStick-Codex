@@ -302,7 +302,7 @@ idf.py build
 
 - This is a cleaned prototype, not a packaged Mac app or DMG.
 - The firmware targets M5Stack StickS3 only.
-- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows today's accumulated token count. The landscape `FIN` counter shows tasks completed during the current local day. It resets after local midnight and is restored after StickS3 power cycles or firmware flashes within the same day.
+- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows tokens accumulated during the current seven-day quota cycle. `TOKEN` restarts from zero whenever that quota cycle resets. The landscape `FIN` counter shows tasks completed during the current local day. It resets after local midnight and is restored after StickS3 power cycles or firmware flashes within the same day.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
 
 ## Contributing & security
