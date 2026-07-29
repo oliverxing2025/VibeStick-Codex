@@ -695,6 +695,24 @@ static int quota_segment_columns(int remaining, bool valid)
     return (remaining * ACTIVITY_SEGMENT_COLUMNS + 99) / 100;
 }
 
+static float activity_particle_breath(int row, int col, int64_t elapsed_us)
+{
+    uint32_t seed =
+        (uint32_t)(row + 1) * 0x9e3779b9u ^
+        (uint32_t)(col + 1) * 0x85ebca6bu;
+    seed ^= seed >> 16;
+    seed *= 0x7feb352du;
+    seed ^= seed >> 15;
+
+    const uint32_t cycle_step =
+        (uint32_t)(elapsed_us / 3125LL) & 0x3ffu;
+    const uint32_t phase = (cycle_step + (seed & 0x3ffu)) & 0x3ffu;
+    const float triangle =
+        phase < 512u ? (float)phase / 511.0f
+                     : (float)(1023u - phase) / 511.0f;
+    return triangle * triangle * (3.0f - 2.0f * triangle);
+}
+
 static void activity_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
@@ -705,21 +723,12 @@ static void activity_timer_cb(lv_timer_t *timer)
         0xc8ff43, 0x72d9ff, 0xbfaeff,
     };
     static const float minimum_brightness[ACTIVITY_ROWS] = {
-        0.84f, 0.86f, 0.86f,
+        0.72f, 0.74f, 0.74f,
     };
     static const float pulse_amplitude[ACTIVITY_ROWS] = {
-        0.16f, 0.14f, 0.14f,
-    };
-    static const float row_delay_cycles[ACTIVITY_ROWS] = {
-        0.0f, 60.0f / 1050.0f, 110.0f / 1050.0f,
+        0.28f, 0.26f, 0.26f,
     };
     const int64_t elapsed_us = esp_timer_get_time();
-    const float cycle_time =
-        (float)(elapsed_us % 1050000LL) / 1050000.0f;
-    const float column_delay_cycles = 110.0f / 1050.0f;
-    const float gaussian_sigma = 0.18f;
-    const float gaussian_denominator =
-        2.0f * gaussian_sigma * gaussian_sigma;
     const provider_display_state_t *display_state =
         current_provider_display_state();
     const int five_hour_active_columns =
@@ -758,18 +767,14 @@ static void activity_timer_cb(lv_timer_t *timer)
                 segment == 0 ? five_hour_active_columns : weekly_active_columns;
             for (int local_col = 0; local_col < active_columns; ++local_col) {
                 const int col = start_column + local_col;
-                float phase = cycle_time - local_col * column_delay_cycles -
-                              row_delay_cycles[row];
-                phase -= floorf(phase);
-                float distance = fminf(phase, 1.0f - phase);
-                float pulse =
-                    expf(-(distance * distance) / gaussian_denominator);
+                const float breath =
+                    activity_particle_breath(row, col, elapsed_us);
                 float brightness = minimum_brightness[row] +
-                                   pulse * pulse_amplitude[row];
+                                   breath * pulse_amplitude[row];
                 lv_color_t fill =
                     scale_activity_color(base_colors[row], brightness);
                 lv_color_t border =
-                    scale_activity_color(base_colors[row], brightness * 0.90f);
+                    scale_activity_color(base_colors[row], brightness * 0.86f);
                 lv_obj_set_style_bg_color(s_activity_cells[row][col], fill, 0);
                 lv_obj_set_style_border_color(s_activity_cells[row][col],
                                               border, 0);
