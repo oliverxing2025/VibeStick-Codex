@@ -765,10 +765,10 @@ static void create_recording_overlay(lv_obj_t *screen)
                                                   lv_color_hex(0xf4f5f7),
                                                   LV_OPA_COVER, 3);
     }
-    s_recording_title = make_label(s_recording_overlay, "正在聆听", FONT_CN,
+    s_recording_title = make_label(s_recording_overlay, "LISTENING", &lv_font_montserrat_20,
                                    lv_color_hex(0xf4f5f7), 180, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_title, LV_ALIGN_CENTER, 0, 26);
-    s_recording_hint = make_label(s_recording_overlay, "松开发送", FONT_CN,
+    s_recording_hint = make_label(s_recording_overlay, "RELEASE TO SEND", &lv_font_montserrat_14,
                                   lv_color_hex(0x8b9098), 180, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -7);
 }
@@ -976,10 +976,10 @@ static void create_portrait_ui(lv_obj_t *screen)
                                                   lv_color_hex(0xf4f5f7), LV_OPA_COVER, 3);
     }
 
-    s_recording_title = make_label(s_recording_overlay, "正在聆听", FONT_CN,
+    s_recording_title = make_label(s_recording_overlay, "LISTENING", &lv_font_montserrat_16,
                                    lv_color_hex(0xf4f5f7), 120, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_title, LV_ALIGN_CENTER, 0, 22);
-    s_recording_hint = make_label(s_recording_overlay, "松开发送", FONT_CN,
+    s_recording_hint = make_label(s_recording_overlay, "RELEASE TO SEND", &lv_font_montserrat_12,
                                   lv_color_hex(0x8b9098), 120, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_recording_hint, LV_ALIGN_BOTTOM_MID, 0, -22);
 
@@ -1756,7 +1756,7 @@ static void handle_recording_start(void)
         s_recording_session_id[0] = '\0';
         return;
     }
-    show_recording_overlay("正在聆听", "松开发送", true);
+    show_recording_overlay("LISTENING", "RELEASE TO SEND", true);
 
     char body[192];
     snprintf(body, sizeof(body),
@@ -1783,7 +1783,7 @@ static void handle_recording_start(void)
 
 static void handle_recording_stop(void)
 {
-    show_recording_overlay("正在发送", "", true);
+    show_recording_overlay("SENDING", "", true);
     if (s_recording_session_id[0] == '\0') {
         (void)vibe_audio_stop();
         vibe_audio_clear();
@@ -1800,7 +1800,7 @@ static void handle_recording_stop(void)
     upload_recording_audio();
     vibe_audio_clear();
 
-    show_recording_overlay("正在识别", "", true);
+    show_recording_overlay("TRANSCRIBING", "", true);
     const char *body =
         "{\"event\":\"button_long_stop\",\"source\":\"sticks3\",\"paste\":true,\"submit\":false}";
     char response[1024] = {0};
@@ -1822,7 +1822,7 @@ static void handle_recording_stop(void)
         ESP_LOGW(TAG, "recording stop bridge request failed: %s", esp_err_to_name(err));
         const char *title = (strcmp(recording_status, "audio_skipped") == 0 ||
                              strcmp(recording_status, "transcript_rejected") == 0)
-            ? "未听清" : "识别失败";
+            ? "NO SPEECH" : "FAILED";
         show_recording_overlay(title, "", true);
         vTaskDelay(pdMS_TO_TICKS(900));
     }

@@ -25,7 +25,7 @@ class DesktopHudTests(unittest.TestCase):
             primary = json.loads(primary_state.read_text())
 
         self.assertEqual(primary["status"], "listening")
-        self.assertEqual(primary["text"], "正在聆听")
+        self.assertEqual(primary["text"], "Listening")
 
 
 if __name__ == "__main__":
