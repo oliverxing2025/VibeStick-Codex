@@ -21,7 +21,9 @@
 #include "esp_lcd_panel_st7789.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
 #include "esp_random.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -69,6 +71,7 @@ typedef enum {
     VIBE_STICK_EVENT_SIDE_SHORT,
     VIBE_STICK_EVENT_SIDE_DOUBLE,
     VIBE_STICK_EVENT_SIDE_LONG,
+    VIBE_STICK_EVENT_SIDE_TRIPLE,
     VIBE_STICK_EVENT_LONG_START,
     VIBE_STICK_EVENT_LONG_STOP,
 } agent_event_type_t;
@@ -1946,6 +1949,13 @@ static void side_button_double_click_cb(void *button_handle, void *usr_data)
     queue_event(VIBE_STICK_EVENT_SIDE_DOUBLE);
 }
 
+static void side_button_triple_click_cb(void *button_handle, void *usr_data)
+{
+    (void)button_handle;
+    (void)usr_data;
+    queue_event(VIBE_STICK_EVENT_SIDE_TRIPLE);
+}
+
 static void side_button_long_start_cb(void *button_handle, void *usr_data)
 {
     (void)button_handle;
@@ -2018,6 +2028,16 @@ static esp_err_t init_button(void)
     ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_DOUBLE_CLICK, NULL,
                                                side_button_double_click_cb, NULL),
                         TAG, "side button double");
+    button_event_args_t triple_click_args = {
+        .multiple_clicks = {
+            .clicks = 3,
+        },
+    };
+    ESP_RETURN_ON_ERROR(iot_button_register_cb(
+                            side_button, BUTTON_MULTIPLE_CLICK,
+                            &triple_click_args,
+                            side_button_triple_click_cb, NULL),
+                        TAG, "side button triple");
     ESP_RETURN_ON_ERROR(iot_button_register_cb(side_button, BUTTON_LONG_PRESS_START,
                                                &long_press_args, side_button_long_start_cb, NULL),
                         TAG, "side button long");
@@ -2094,6 +2114,25 @@ static void app_task(void *arg)
         if (xQueueReceive(s_event_queue, &event, pdMS_TO_TICKS(100)) != pdTRUE) {
             continue;
         }
+        if (event.type == VIBE_STICK_EVENT_SIDE_TRIPLE) {
+            const esp_partition_t *running = esp_ota_get_running_partition();
+            const esp_partition_t *next =
+                esp_ota_get_next_update_partition(NULL);
+            if (!running || !next || next == running) {
+                ESP_LOGE(TAG, "app switch target unavailable");
+                continue;
+            }
+            esp_err_t err = esp_ota_set_boot_partition(next);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "app switch failed: %s",
+                         esp_err_to_name(err));
+                continue;
+            }
+            ESP_LOGI(TAG, "switch app %s -> %s",
+                     running->label, next->label);
+            vTaskDelay(pdMS_TO_TICKS(120));
+            esp_restart();
+        }
         if (s_startup_active && event.type != VIBE_STICK_EVENT_POLL_STATE) {
             if (event.type == VIBE_STICK_EVENT_SHORT_PRESS ||
                 event.type == VIBE_STICK_EVENT_DOUBLE_CLICK ||
@@ -2127,6 +2166,8 @@ static void app_task(void *arg)
             break;
         case VIBE_STICK_EVENT_SIDE_LONG:
             post_simple_event("side_long", NULL);
+            break;
+        case VIBE_STICK_EVENT_SIDE_TRIPLE:
             break;
         case VIBE_STICK_EVENT_LONG_START:
             handle_recording_start();
