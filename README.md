@@ -22,7 +22,7 @@
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
-  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex portrait dashboard product render" width="480">
+  <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex portrait dashboard product render" width="480">
 </div>
 
 ## Overview
@@ -44,7 +44,7 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
       <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex push-to-talk listening screen product render" width="100%">
     </td>
     <td width="58%" align="center">
-      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v2.png" alt="VibeStick-Codex landscape dashboard product render" width="100%">
+      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v3.png" alt="VibeStick-Codex landscape dashboard product render" width="100%">
     </td>
   </tr>
   <tr>

@@ -22,7 +22,7 @@
     <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
-  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
+  <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
 </div>
 
 ## 项目概览
@@ -44,7 +44,7 @@ VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常
       <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex 按住说话界面产品效果图" width="100%">
     </td>
     <td width="58%" align="center">
-      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v2.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="100%">
+      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v3.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="100%">
     </td>
   </tr>
   <tr>
