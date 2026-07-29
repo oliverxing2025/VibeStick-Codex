@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible VibeStick-Codex problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove credentials, Wi-Fi details, local paths, recordings, and Codex session content before submitting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - StickS3 firmware
+        - macOS bridge
+        - Voice transcription
+        - Dual-firmware switching
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.4 or commit SHA
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, StickS3 hardware, ESP-IDF version, and installation method.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Do not include tokens, credentials, personal paths, prompts, transcripts, or recordings.
+      render: shell
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed secrets and personal data from this report.
+          required: true
