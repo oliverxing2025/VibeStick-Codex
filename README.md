@@ -64,6 +64,15 @@ The landscape activity matrix is split into two independent quota regions: `5H` 
 > [!NOTE]
 > These are product renders. Minor details may differ from the current on-device firmware.
 
+## Platform support
+
+| Platform | Current support |
+| --- | --- |
+| **macOS** | Fully supports the documented setup, including the bridge, HUD, Codex desktop control, automatic paste, and Mac microphone fallback. |
+| **Windows** | End-to-end support is not available yet. The firmware can be built and flashed using Espressif's Windows toolchain, but a Windows bridge installer, HUD, Codex desktop control, and automatic paste integration have not been implemented. |
+
+The computer-integration steps below therefore target macOS. For firmware-only building and flashing on another platform, follow Espressif's instructions for that platform.
+
 ## Before you start
 
 - [ ] M5Stack StickS3 and a USB-C data cable.

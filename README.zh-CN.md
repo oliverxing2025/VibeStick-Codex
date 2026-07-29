@@ -64,9 +64,18 @@ VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常
 > [!NOTE]
 > 以上图片为产品效果图，个别细节可能与当前实机固件略有差异。
 
+## 平台支持
+
+| 平台 | 当前支持情况 |
+| --- | --- |
+| **macOS** | 完整支持当前安装流程，包括 bridge、HUD、Codex 桌面控制、自动粘贴和 Mac 麦克风兜底。 |
+| **Windows** | 暂未提供完整支持。可以按照 Espressif 官方方式构建和烧录固件，但 Windows 版 bridge 安装、HUD、Codex 桌面控制及自动粘贴尚未实现。 |
+
+因此，下面涉及电脑端集成的步骤以 macOS 为准；纯固件构建和烧录步骤可参考 Espressif 的对应平台文档执行。
+
 ## 开始前的准备
 
-- [ ] M5 StickS3｜一根 USB-C 数据线｜一台电脑（最好是Mac）
+- [ ] M5Stack StickS3｜一根 USB-C 数据线｜一台 Mac
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
 - [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 [SiliconFlow](https://cloud.siliconflow.cn/)；也可以改用其他兼容服务的 `base_url` 和模型名称。
 
