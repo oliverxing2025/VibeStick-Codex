@@ -1,10 +1,10 @@
-# VibeStick
+# VibeStick-Codex
 
 [English README](README.md)
 
-VibeStick 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
+VibeStick-Codex 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
 
-本分支面向 M5Stack StickS3，只集成本地 Codex；不是 M5Stack 或 OpenAI 官方项目。
+本项目基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 MIT License 发布。VibeStick-Codex 专注于 M5Stack StickS3 和本地 Codex 集成；它不是 M5Stack 或 OpenAI 官方项目。
 
 ## 开始前的准备
 

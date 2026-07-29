@@ -2,8 +2,7 @@
 
 ## Reporting a vulnerability
 Please report security issues privately — do not open a public issue for anything sensitive.
-- Preferred: GitHub Security Advisories ("Report a vulnerability" on the Security tab).
-- Or email: garyzhang345@gmail.com
+- Use GitHub Security Advisories ("Report a vulnerability" on the Security tab).
 
 Include a description, steps to reproduce, the affected version/commit, and impact. We'll
 acknowledge within a reasonable time and keep you posted on a fix.
