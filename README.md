@@ -44,7 +44,7 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
       <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex push-to-talk listening screen product render" width="100%">
     </td>
     <td width="58%" align="center">
-      <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex landscape dashboard product render" width="100%">
+      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v2.png" alt="VibeStick-Codex landscape dashboard product render" width="100%">
     </td>
   </tr>
   <tr>

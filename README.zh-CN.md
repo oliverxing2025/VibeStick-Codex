@@ -44,7 +44,7 @@ VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常
       <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex 按住说话界面产品效果图" width="100%">
     </td>
     <td width="58%" align="center">
-      <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="100%">
+      <img src="assets/screenshots/vibestick-codex-landscape-dashboard-v2.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="100%">
     </td>
   </tr>
   <tr>
