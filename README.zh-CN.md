@@ -1,35 +1,64 @@
-# VibeStick-Codex
+<div align="center">
+  <img src="assets/brand/vibestick-icon.svg" alt="VibeStick-Codex 图标" width="104">
+  <h1>VibeStick-Codex</h1>
+  <p><strong>一个放在手边的 Codex 硬件伴侣。</strong></p>
+  <p>
+    用 M5Stack StickS3 查看实时状态、额度、任务反馈，<br>
+    并通过按住说话快速输入。
+  </p>
+  <p>
+    <a href="#项目概览">项目概览</a> ·
+    <a href="#安装">安装</a> ·
+    <a href="#配置说明">配置</a> ·
+    <a href="#常见问题排查">排查</a> ·
+    <a href="README.md">English</a>
+  </p>
+  <p>
+    <img alt="CI" src="https://github.com/oliverxing2025/VibeStick-Codex/actions/workflows/ci.yml/badge.svg">
+    <img alt="硬件：M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
+    <img alt="平台：macOS" src="https://img.shields.io/badge/platform-macOS-111111">
+    <img alt="ESP-IDF：5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
+    <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
+  </p>
+  <br>
+  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
+</div>
 
-[English README](README.md)
+## 项目概览
 
-VibeStick-Codex 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
+VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常查看的信息从桌面移到手边，并把常用操作放到两个实体按键上。
 
-<p align="center">
-  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="520">
-</p>
-
-本项目基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 MIT License 发布。VibeStick-Codex 专注于 M5Stack StickS3 和本地 Codex 集成；它不是 M5Stack 或 OpenAI 官方项目。
-
-横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
+| | 能力 | 作用 |
+| --- | --- | --- |
+| **01** | 实时状态 | 显示 Wi-Fi、时间、电量、Codex 状态和声音提醒。 |
+| **02** | 额度一览 | 查看剩余额度、已用比例、今日 Token 和重置时间。 |
+| **03** | 按住说话 | 按住录音、松开转写，并把文字填入 Codex 供检查。 |
+| **04** | 自适应界面 | 自动在详细竖屏主页和紧凑横屏任务视图之间切换。 |
 
 ## 设备体验
 
-### 按住说话
+<table>
+  <tr>
+    <td width="42%" align="center">
+      <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex 按住说话界面产品效果图" width="100%">
+    </td>
+    <td width="58%" align="center">
+      <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>按住说话</strong><br>
+      按住正面蓝键开始录音，松开后自动转写，并把结果填入 Codex 供检查。
+    </td>
+    <td valign="top">
+      <strong>自适应横屏仪表盘</strong><br>
+      横放设备即可查看状态、额度重置天数、剩余额度、任务数量和动态矩阵。
+    </td>
+  </tr>
+</table>
 
-按住正面蓝键开始录音，松开后自动转写，并把文字填入 Codex，供用户检查后手动发送。设备上的录音、转写、成功和失败状态均使用英文显示。
-
-<p align="center">
-  <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex 按住说话界面产品效果图" width="520">
-</p>
-
-### 自适应横屏仪表盘
-
-横放 StickS3 后会自动切换到紧凑的横屏仪表盘，显示当前状态、时间日期、额度重置天数、剩余额度、任务数量和三行动态矩阵；重新竖起设备后会恢复竖屏首页。
-
-<p align="center">
-  <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="720">
-</p>
-
+> [!NOTE]
 > 以上图片为产品效果图，个别细节可能与当前实机固件略有差异。
 
 ## 开始前的准备
@@ -38,6 +67,7 @@ VibeStick-Codex 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线�
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
 - [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 SiliconFlow，可通过这个 [SiliconFlow 推荐注册链接](https://cloud.siliconflow.cn/i/HgvY1CNk) 创建账户；也可以改用其他兼容服务的 `base_url` 和模型名称。
 
+<p align="center"><strong>初始化 → 配置 → 烧录 → 安装 bridge → 验证</strong></p>
 
 ## 安装
 
@@ -277,6 +307,8 @@ idf.py build
 欢迎贡献,详见 [CONTRIBUTING.md](CONTRIBUTING.md)。报告安全漏洞请见
 [SECURITY.md](SECURITY.md)(请私下报告)。
 
-## 许可证
+## 致谢与许可证
 
-VibeStick 使用 MIT License 发布。见 [LICENSE](LICENSE)。
+VibeStick-Codex 基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 [MIT License](LICENSE) 发布。本项目专注于 M5Stack StickS3 和本地 Codex 集成，不是 M5Stack 或 OpenAI 官方项目。
+
+横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
