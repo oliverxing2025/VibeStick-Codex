@@ -202,6 +202,8 @@ static lv_obj_t *s_date_label;
 static lv_obj_t *s_date_separator;
 static lv_obj_t *s_weekday_label;
 static lv_obj_t *s_activity_divider;
+static lv_obj_t *s_activity_5h_percent_label;
+static lv_obj_t *s_activity_7d_percent_label;
 static lv_obj_t *s_run_count_label;
 static lv_obj_t *s_ask_count_label;
 static lv_obj_t *s_new_count_label;
@@ -834,8 +836,17 @@ static void layout_landscape_date_row(const char *date_text,
                        separator_gap,
                    4);
     if (s_activity_divider) {
-        lv_obj_set_x(s_activity_divider,
-                     lv_obj_get_x(s_date_separator) + separator_size / 2);
+        const int32_t divider_x =
+            lv_obj_get_x(s_date_separator) + separator_size / 2;
+        lv_obj_set_x(s_activity_divider, divider_x);
+        if (s_activity_5h_percent_label) {
+            lv_obj_set_x(s_activity_5h_percent_label,
+                         divider_x / 2 - 20);
+        }
+        if (s_activity_7d_percent_label) {
+            lv_obj_set_x(s_activity_7d_percent_label,
+                         divider_x + (LCD_V_RES - divider_x) / 2 - 20);
+        }
     }
     lv_obj_invalidate(s_date_group);
 }
@@ -867,6 +878,8 @@ static void format_landscape_weekday_text(const char *source, char *target,
 static void create_landscape_ui(lv_obj_t *screen)
 {
     s_activity_divider = NULL;
+    s_activity_5h_percent_label = NULL;
+    s_activity_7d_percent_label = NULL;
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x161a1e), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
 
@@ -933,6 +946,14 @@ static void create_landscape_ui(lv_obj_t *screen)
         make_label(s_date_group, "1W:", &lv_font_montserrat_12,
                    lv_color_hex(0x41c7ff), 28, LV_TEXT_ALIGN_RIGHT);
     lv_obj_align(weekly_hint, LV_ALIGN_BOTTOM_RIGHT, -6, 0);
+    s_activity_5h_percent_label =
+        make_label(s_date_group, "--%", &lv_font_montserrat_12,
+                   lv_color_hex(0x41c7ff), 40, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_y(s_activity_5h_percent_label, 19);
+    s_activity_7d_percent_label =
+        make_label(s_date_group, "--%", &lv_font_montserrat_12,
+                   lv_color_hex(0x41c7ff), 40, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_y(s_activity_7d_percent_label, 19);
     layout_landscape_date_row("--- --", "-------");
 
     for (int row = 0; row < ACTIVITY_ROWS; ++row) {
@@ -1184,6 +1205,22 @@ static void render_state(void)
                      percent_left);
         }
         lv_label_set_text(s_percent_left_label, percent_left_text);
+        char five_hour_percent_text[8] = "--%";
+        if (display_state->quota_5h_valid) {
+            snprintf(five_hour_percent_text,
+                     sizeof(five_hour_percent_text), "%d%%",
+                     display_state->quota_5h);
+        }
+        lv_label_set_text(s_activity_5h_percent_label,
+                          five_hour_percent_text);
+        char weekly_percent_text[8] = "--%";
+        if (display_state->quota_7d_valid) {
+            snprintf(weekly_percent_text,
+                     sizeof(weekly_percent_text), "%d%%",
+                     display_state->quota_7d);
+        }
+        lv_label_set_text(s_activity_7d_percent_label,
+                          weekly_percent_text);
         char landscape_date[8];
         char landscape_weekday[6];
         format_landscape_date_text(
