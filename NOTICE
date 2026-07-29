@@ -27,3 +27,7 @@ Licensed under the SIL Open Font License, Version 1.1.
 The generated glyph subset is used only for the StickS3 Chinese UI font in:
 
   firmware/sticks3/generated/vibe_stick_cn_16.c
+
+The complete SIL Open Font License 1.1 text is included at:
+
+  firmware/sticks3/third_party/noto-sans-sc/OFL.txt

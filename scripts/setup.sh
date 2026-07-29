@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -eu
+umask 077
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_PATH="$ROOT_DIR/.env"
@@ -125,6 +126,8 @@ if [ ! -f "$SECRETS_PATH" ]; then
 else
   printf '%s\n' "Kept existing firmware/sticks3/include/vibe_stick_secrets.h."
 fi
+
+chmod 600 "$ENV_PATH" "$SECRETS_PATH"
 
 env_token="$(env_value VIBE_STICK_BRIDGE_TOKEN "$ENV_PATH")"
 secret_token="$(secret_value VIBE_STICK_BRIDGE_TOKEN "$SECRETS_PATH")"
