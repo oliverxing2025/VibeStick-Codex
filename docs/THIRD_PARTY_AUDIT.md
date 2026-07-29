@@ -5,6 +5,7 @@ This audit documents the v0.1.1 repository state after cleanup.
 | Project / file / dependency | Source | Current use | License status | Risk | Recommendation |
 | --- | --- | --- | --- | --- | --- |
 | VibeStick base project | [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) | Original application, bridge, firmware, documentation, and project structure subsequently modified for VibeStick-Codex | MIT; original copyright and license retained in `LICENSE` and `NOTICE` | Low | Keep attribution and the complete MIT license with redistributed copies or substantial portions. |
+| Landscape dashboard reference | [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) | Visual design and information-architecture reference for the landscape status dashboard, including compact task counters and activity matrix; independently reimplemented with ESP-IDF and LVGL | CodeBuddy StickS3 firmware is MIT-licensed; no CodeBuddy source code or artwork is redistributed here | Low | Keep the reference attribution in `NOTICE`. If CodeBuddy code or assets are introduced later, retain the applicable copyright and license text and update this audit. |
 | `bridge/src/vibe_stick/` | Project-authored Python | Local Mac bridge, state API, quota observation, recording flow, ASR adapter, paste injection | MIT under this repository | Low | Keep. |
 | `app/macos/VibeStickHUD/main.swift` | Project-authored Swift | Minimal recording status HUD | MIT under this repository | Low | Keep. |
 | `firmware/sticks3/src/` and `firmware/sticks3/include/` | Project-authored C using ESP-IDF APIs | StickS3 UI, HTTP, buttons, audio, battery, speaker alerts | MIT under this repository | Low | Keep. |
@@ -24,6 +25,6 @@ This audit documents the v0.1.1 repository state after cleanup.
 
 ## Summary
 
-This repository is derived from Gary Zhang's MIT-licensed VibeStick project. The original copyright and MIT permission notice are retained in `LICENSE` and the relationship is documented in `NOTICE`. Vendored third-party materials are limited to the Bosch BMI270 driver and the generated Chinese LVGL glyph subset derived from Noto Sans SC; their license notices remain with the repository. Other build-time firmware dependencies are resolved through the ESP-IDF component manager.
+This repository is derived from Gary Zhang's MIT-licensed VibeStick project. The original copyright and MIT permission notice are retained in `LICENSE` and the relationship is documented in `NOTICE`. The landscape dashboard acknowledges CodeBuddy as a visual and information-architecture reference; its implementation is project-authored ESP-IDF/LVGL code, and no CodeBuddy source code or artwork is redistributed here. Vendored third-party materials are limited to the Bosch BMI270 driver and the generated Chinese LVGL glyph subset derived from Noto Sans SC; their license notices remain with the repository. Other build-time firmware dependencies are resolved through the ESP-IDF component manager.
 
 Before a public binary release, review the exact ESP-IDF/component licenses included in the firmware image and ensure the Noto Sans SC attribution remains in NOTICE.

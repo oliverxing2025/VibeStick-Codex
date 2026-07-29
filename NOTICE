@@ -8,6 +8,16 @@ VibeStick-Codex modifications Copyright (c) 2026 Oliver Xing.
 The original software and modifications are distributed under the MIT License.
 See LICENSE for the complete license text.
 
+The landscape dashboard's visual design and information architecture were
+inspired by CodeBuddy by CharlexH:
+https://github.com/CharlexH/CodeBuddy
+
+The dashboard was independently reimplemented for VibeStick-Codex using
+ESP-IDF and LVGL; CodeBuddy source code and artwork are not redistributed in
+this repository. CodeBuddy's StickS3 firmware is distributed under the MIT
+License. See:
+https://github.com/CharlexH/CodeBuddy/blob/main/firmware/LICENSE
+
 This repository contains a generated LVGL glyph subset derived from Noto Sans SC Regular.
 
 Noto Sans SC Regular

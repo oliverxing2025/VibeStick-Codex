@@ -4,7 +4,33 @@
 
 VibeStick-Codex turns an M5Stack StickS3 into a tiny Codex terminal: live status, quota remaining, usage consumed, today's tokens, alerts, and push-to-talk transcription entered into Codex for manual submission.
 
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex portrait dashboard product render" width="520">
+</p>
+
 This project is based on [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) and is distributed under the MIT License. VibeStick-Codex focuses on M5Stack StickS3 and local Codex integration. It is not an official M5Stack or OpenAI project.
+
+The landscape dashboard's visual design and information architecture were inspired by [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) and independently reimplemented with ESP-IDF and LVGL. No CodeBuddy source code or artwork is redistributed here. See [NOTICE](NOTICE) and the [third-party audit](docs/THIRD_PARTY_AUDIT.md) for details.
+
+## Device experience
+
+### Push-to-talk input
+
+Hold the front blue button to record. Release it to transcribe the audio and place the resulting text into Codex for review and manual submission. Recording, transcription, success, and failure states are presented in English on the device.
+
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex push-to-talk listening screen product render" width="520">
+</p>
+
+### Adaptive landscape dashboard
+
+Rotate the StickS3 to switch automatically to a compact landscape dashboard. It shows the current status, time and date, quota reset days, quota remaining, task counts, and the animated three-row activity matrix. Returning the device upright restores the portrait dashboard.
+
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex landscape dashboard product render" width="720">
+</p>
+
+> The images above are product renders. Minor details may differ from the current on-device firmware.
 
 ## What you'll need (prepare first)
 

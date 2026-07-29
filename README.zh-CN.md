@@ -4,7 +4,33 @@
 
 VibeStick-Codex 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
 
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-portrait-dashboard.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="520">
+</p>
+
 本项目基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 MIT License 发布。VibeStick-Codex 专注于 M5Stack StickS3 和本地 Codex 集成；它不是 M5Stack 或 OpenAI 官方项目。
+
+横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
+
+## 设备体验
+
+### 按住说话
+
+按住正面蓝键开始录音，松开后自动转写，并把文字填入 Codex，供用户检查后手动发送。设备上的录音、转写、成功和失败状态均使用英文显示。
+
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-voice-input.png" alt="VibeStick-Codex 按住说话界面产品效果图" width="520">
+</p>
+
+### 自适应横屏仪表盘
+
+横放 StickS3 后会自动切换到紧凑的横屏仪表盘，显示当前状态、时间日期、额度重置天数、剩余额度、任务数量和三行动态矩阵；重新竖起设备后会恢复竖屏首页。
+
+<p align="center">
+  <img src="assets/screenshots/vibestick-codex-landscape-dashboard.png" alt="VibeStick-Codex 横屏仪表盘产品效果图" width="720">
+</p>
+
+> 以上图片为产品效果图，个别细节可能与当前实机固件略有差异。
 
 ## 开始前的准备
 
