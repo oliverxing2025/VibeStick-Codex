@@ -2,8 +2,6 @@
 
 [English README](README.md)
 
-![VibeStick 语音输入流程，显示 StickS3 录音状态和 Mac HUD](assets/brand/voice-input-preview.png)
-
 VibeStick 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态、额度剩余、今日用量消耗、今日 Token 和提醒音，并支持长按说话后自动转写并填入 Codex。
 
 本分支面向 M5Stack StickS3，只集成本地 Codex；不是 M5Stack 或 OpenAI 官方项目。
@@ -12,7 +10,7 @@ VibeStick 把 M5Stack StickS3 变成一个 Codex 小终端：显示在线状态�
 
 - [ ] M5 StickS3｜一根 USB-C 数据线｜一台电脑（最好是Mac）
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
--  语音转写API key 推荐 SiliconFlow：<https://cloud.siliconflow.cn/i/7ZCoy9fU>。国内直连、有免费额度、OpenAI 兼容；演示视频用的就是 SiliconFlow。可改用其他 OpenAI 兼容服务的 `base_url` 和模型名称。
+- [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 SiliconFlow，也可以改用其他兼容服务的 `base_url` 和模型名称。
 
 
 ## 安装
@@ -150,7 +148,7 @@ open -e .env
 
 ### 录音转写失败、SSL 报错或超时
 
-通常是当前网络访问不到所选 ASR 服务。国内用户建议换 SiliconFlow：<https://cloud.siliconflow.cn/i/7ZCoy9fU>。也可以配置其他可访问的 OpenAI 兼容 ASR，或配置网络代理。
+通常是当前网络访问不到所选 ASR 服务。请配置当前网络可访问的 OpenAI 兼容 ASR 服务，或配置网络代理。
 
 ## 配置说明
 
