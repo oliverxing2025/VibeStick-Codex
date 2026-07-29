@@ -1,10 +1,10 @@
-# VibeStick
+# VibeStick-Codex
 
 [中文说明](README.zh-CN.md)
 
-VibeStick turns an M5Stack StickS3 into a tiny Codex terminal: live status, quota remaining, usage consumed, today's tokens, alerts, and push-to-talk transcription entered into Codex for manual submission.
+VibeStick-Codex turns an M5Stack StickS3 into a tiny Codex terminal: live status, quota remaining, usage consumed, today's tokens, alerts, and push-to-talk transcription entered into Codex for manual submission.
 
-This branch targets M5Stack StickS3 and integrates local Codex only. It is not an official M5Stack or OpenAI project.
+This project is based on [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) and is distributed under the MIT License. VibeStick-Codex focuses on M5Stack StickS3 and local Codex integration. It is not an official M5Stack or OpenAI project.
 
 ## What you'll need (prepare first)
 

@@ -1,5 +1,12 @@
-VibeStick
-Copyright (c) 2026 Gary Zhang
+VibeStick-Codex
+
+Based on VibeStick by Gary Zhang:
+https://github.com/GaryGaryyy/VibeStick
+
+Original software Copyright (c) 2026 Gary Zhang.
+VibeStick-Codex modifications Copyright (c) 2026 Oliver Xing.
+The original software and modifications are distributed under the MIT License.
+See LICENSE for the complete license text.
 
 This repository contains a generated LVGL glyph subset derived from Noto Sans SC Regular.
 
@@ -10,5 +17,3 @@ Licensed under the SIL Open Font License, Version 1.1.
 The generated glyph subset is used only for the StickS3 Chinese UI font in:
 
   firmware/sticks3/generated/vibe_stick_cn_16.c
-
-VibeStick does not intentionally vendor third-party brand assets or historical prototype application shells in v0.1.1.

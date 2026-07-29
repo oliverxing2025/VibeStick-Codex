@@ -4,6 +4,7 @@ This audit documents the v0.1.1 repository state after cleanup.
 
 | Project / file / dependency | Source | Current use | License status | Risk | Recommendation |
 | --- | --- | --- | --- | --- | --- |
+| VibeStick base project | [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) | Original application, bridge, firmware, documentation, and project structure subsequently modified for VibeStick-Codex | MIT; original copyright and license retained in `LICENSE` and `NOTICE` | Low | Keep attribution and the complete MIT license with redistributed copies or substantial portions. |
 | `bridge/src/vibe_stick/` | Project-authored Python | Local Mac bridge, state API, quota observation, recording flow, ASR adapter, paste injection | MIT under this repository | Low | Keep. |
 | `app/macos/VibeStickHUD/main.swift` | Project-authored Swift | Minimal recording status HUD | MIT under this repository | Low | Keep. |
 | `firmware/sticks3/src/` and `firmware/sticks3/include/` | Project-authored C using ESP-IDF APIs | StickS3 UI, HTTP, buttons, audio, battery, speaker alerts | MIT under this repository | Low | Keep. |
@@ -11,6 +12,7 @@ This audit documents the v0.1.1 repository state after cleanup.
 | `assets/providers/**` and `firmware/sticks3/assets/providers/**` | Project-generated simple geometry | Temporary provider/status icons | MIT under this repository | Low | Keep. Avoid replacing with third-party brand marks unless license/brand usage is reviewed. |
 | `firmware/sticks3/generated/vibe_stick_ui_assets.c/.h` | Generated from project-owned PNG icons | LVGL image descriptors for provider icons | MIT under this repository | Low | Keep. |
 | `firmware/sticks3/generated/vibe_stick_cn_16.c` | Generated from Noto Sans SC Regular | LVGL Chinese glyph subset for StickS3 UI | Source font is SIL Open Font License 1.1 | Medium | Keep with NOTICE attribution. Do not use the reserved font name as a VibeStick brand. |
+| `firmware/sticks3/third_party/bmi270/` | Bosch Sensortec BMI270 Sensor API | Vendored IMU driver source | BSD-3-Clause-style license retained with the source | Low | Keep the source headers and bundled license intact. |
 | `firmware/sticks3/src/idf_component.yml` dependencies: `espressif/button`, `espressif/esp_codec_dev`, `lvgl/lvgl` | ESP Component Registry | Build-time firmware dependencies | External open-source components, not vendored after cleanup | Low | Keep dependency manifest and lock file. Review component licenses before binary release. |
 | ESP-IDF framework | Espressif | Firmware framework | External SDK, not vendored | Low | Keep as build prerequisite. |
 | Groq ASR API | Optional external service | Optional speech-to-text when configured | Service API, no source vendored | Medium | Document that audio leaves the Mac when Groq is configured. Do not commit API keys. |
@@ -22,6 +24,6 @@ This audit documents the v0.1.1 repository state after cleanup.
 
 ## Summary
 
-No third-party source code or brand assets are intentionally vendored in this repository after cleanup, except the generated Chinese LVGL glyph subset derived from Noto Sans SC under the SIL Open Font License 1.1. Build-time firmware dependencies are resolved through the ESP-IDF component manager and are not committed as vendored source.
+This repository is derived from Gary Zhang's MIT-licensed VibeStick project. The original copyright and MIT permission notice are retained in `LICENSE` and the relationship is documented in `NOTICE`. Vendored third-party materials are limited to the Bosch BMI270 driver and the generated Chinese LVGL glyph subset derived from Noto Sans SC; their license notices remain with the repository. Other build-time firmware dependencies are resolved through the ESP-IDF component manager.
 
 Before a public binary release, review the exact ESP-IDF/component licenses included in the firmware image and ensure the Noto Sans SC attribution remains in NOTICE.
