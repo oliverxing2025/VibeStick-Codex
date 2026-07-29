@@ -164,12 +164,12 @@ Wait for `Hash of data verified`.
 ./scripts/doctor.sh
 ```
 
-Aim for all required checks to pass. The StickS3 should show Wi-Fi, time, battery, Codex status, and `FUNDS / TODAY / TOKEN`.
+Aim for all required checks to pass. The StickS3 should show Wi-Fi, time, battery, Codex status, and `1W FUNDS / 5H FUNDS / TODAY / TOKEN`.
 
 11. 👤 Test both buttons:
 
 - Front blue, short press: open/focus Codex; approve when Codex is waiting for confirmation.
-- Front blue, double press: refresh `FUNDS / TODAY / TOKEN`.
+- Front blue, double press: refresh `1W FUNDS / 5H FUNDS / TODAY / TOKEN`.
 - Front blue, hold and release: record, transcribe, and enter into Codex without submitting.
 - Side, short press: approve all waiting Codex tasks across projects; if none are waiting, send the current input.
 - Side, double press: clear the current input text.
@@ -329,7 +329,7 @@ idf.py build
 
 - This is a cleaned prototype, not a packaged Mac app or DMG.
 - The firmware targets M5Stack StickS3 only.
-- `FUNDS` shows Codex quota remaining, `TODAY` shows the corresponding usage consumed, and `TOKEN` shows tokens accumulated during the current seven-day quota cycle. `TOKEN` restarts from zero whenever that quota cycle resets. The landscape `FIN` counter shows tasks completed during the current local day. It resets after local midnight and is restored after StickS3 power cycles or firmware flashes within the same day.
+- `1W FUNDS` and `5H FUNDS` show the remaining weekly and five-hour Codex quotas. `TODAY` shows the corresponding usage consumed, and `TOKEN` shows tokens accumulated during the current seven-day quota cycle. `TOKEN` restarts from zero whenever that quota cycle resets. The landscape `FIN` counter shows tasks completed during the current local day. It resets after local midnight and is restored after StickS3 power cycles or firmware flashes within the same day.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
 
 ## Contributing & security

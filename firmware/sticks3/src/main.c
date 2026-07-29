@@ -187,6 +187,7 @@ static lv_obj_t *s_provider_label;
 static lv_obj_t *s_status_dot;
 static lv_obj_t *s_status_label;
 static lv_obj_t *s_funds_value_label;
+static lv_obj_t *s_five_hour_funds_value_label;
 static lv_obj_t *s_today_value_label;
 static lv_obj_t *s_token_value_label;
 static lv_obj_t *s_recording_overlay;
@@ -661,18 +662,18 @@ static lv_obj_t *make_fullscreen_overlay(lv_obj_t *parent)
 static lv_obj_t *make_metric_card(lv_obj_t *screen, int32_t y, const char *title,
                                   lv_color_t value_color, lv_obj_t **value_label)
 {
-    lv_obj_t *card = make_plain_obj(screen, LCD_H_RES - 16, 40,
+    lv_obj_t *card = make_plain_obj(screen, LCD_H_RES - 16, 32,
                                     lv_color_hex(0x101216), LV_OPA_COVER, 7);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_color(card, lv_color_hex(0x30343c), 0);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y);
 
-    lv_obj_t *title_label = make_label(card, title, &lv_font_montserrat_12,
-                                       lv_color_hex(0xa5aab3), 58, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 8, 0);
-    *value_label = make_label(card, "--", &lv_font_montserrat_16,
-                              value_color, 54, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_align(*value_label, LV_ALIGN_RIGHT_MID, -7, 0);
+    lv_obj_t *title_label = make_label(card, title, &lv_font_montserrat_10,
+                                       lv_color_hex(0xa5aab3), 64, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 7, 0);
+    *value_label = make_label(card, "--", &lv_font_montserrat_14,
+                              value_color, 44, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_align(*value_label, LV_ALIGN_RIGHT_MID, -6, 0);
     return card;
 }
 
@@ -1086,10 +1087,14 @@ static void create_portrait_ui(lv_obj_t *screen)
     lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 71, 59);
     lv_obj_align_to(s_status_dot, s_status_label, LV_ALIGN_OUT_LEFT_MID, -4, 0);
 
-    make_metric_card(screen, 91, "FUNDS:", lv_color_hex(0x8edb94), &s_funds_value_label);
-    make_metric_card(screen, 137, "TODAY:", lv_color_hex(0x8d94ee), &s_today_value_label);
-    make_metric_card(screen, 183, "TOKEN:", lv_color_hex(0xe7d86f), &s_token_value_label);
-    lv_obj_set_style_text_font(s_token_value_label, &lv_font_montserrat_14, 0);
+    make_metric_card(screen, 82, "1W FUNDS:", lv_color_hex(0x8edb94),
+                     &s_funds_value_label);
+    make_metric_card(screen, 119, "5H FUNDS:", lv_color_hex(0x41c7ff),
+                     &s_five_hour_funds_value_label);
+    make_metric_card(screen, 156, "TODAY:", lv_color_hex(0x8d94ee),
+                     &s_today_value_label);
+    make_metric_card(screen, 193, "TOKEN:", lv_color_hex(0xe7d86f),
+                     &s_token_value_label);
 
     s_recording_overlay = make_fullscreen_overlay(screen);
     lv_obj_add_flag(s_recording_overlay, LV_OBJ_FLAG_HIDDEN);
@@ -1302,10 +1307,10 @@ static void render_state(void)
     lv_obj_set_style_text_color(s_provider_label, lv_color_hex(0xf3f4f6), 0);
     lv_label_set_text(s_status_label, status_text_for(display_state->status));
     set_status_color(provider, status_key);
-    const bool quota_valid = display_state->quota_7d_valid || display_state->quota_5h_valid;
-    const int quota_remaining = display_state->quota_7d_valid
-        ? display_state->quota_7d : display_state->quota_5h;
-    set_percent_label(s_funds_value_label, quota_remaining, quota_valid);
+    set_percent_label(s_funds_value_label, display_state->quota_7d,
+                      display_state->quota_7d_valid);
+    set_percent_label(s_five_hour_funds_value_label, display_state->quota_5h,
+                      display_state->quota_5h_valid);
     set_percent_label(s_today_value_label, display_state->today_used_percent,
                       display_state->today_used_percent_valid);
     set_token_label(s_token_value_label, display_state->today_tokens,
