@@ -37,6 +37,8 @@ class QuotaTests(unittest.TestCase):
                     "13:01",
                     False,
                     quota_7d_reset_days=4,
+                    quota_5h_reset_minutes=204,
+                    quota_7d_reset_minutes=7250,
                 ),
             )
             quota = load_quota(path)
@@ -49,6 +51,8 @@ class QuotaTests(unittest.TestCase):
                 "13:01",
                 False,
                 quota_7d_reset_days=4,
+                quota_5h_reset_minutes=204,
+                quota_7d_reset_minutes=7250,
             ),
         )
 

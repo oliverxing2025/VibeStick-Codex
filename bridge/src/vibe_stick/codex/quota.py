@@ -16,6 +16,8 @@ class QuotaSnapshot:
     quota_stale: bool = False
     quota_7d_reset_days: int | None = None
     quota_7d_resets_at: float | None = None
+    quota_5h_reset_minutes: int | None = None
+    quota_7d_reset_minutes: int | None = None
 
     def to_jsonable(self) -> dict[str, Any]:
         return asdict(self)
@@ -28,6 +30,12 @@ def load_quota(path: Path) -> QuotaSnapshot:
         return QuotaSnapshot()
     return QuotaSnapshot(
         quota_5h_remaining=_percent_or_none(data.get("quota_5h_remaining")),
+        quota_5h_reset_minutes=_nonnegative_int_or_none(
+            data.get("quota_5h_reset_minutes")
+        ),
+        quota_7d_reset_minutes=_nonnegative_int_or_none(
+            data.get("quota_7d_reset_minutes")
+        ),
         quota_7d_remaining=_percent_or_none(data.get("quota_7d_remaining")),
         quota_7d_reset_days=_nonnegative_int_or_none(data.get("quota_7d_reset_days")),
         quota_7d_resets_at=_nonnegative_float_or_none(data.get("quota_7d_resets_at")),

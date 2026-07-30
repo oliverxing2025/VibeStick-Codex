@@ -12,6 +12,8 @@ from vibe_stick.codex.local_observer import (
     _daily_used_percent,
     _daily_used_percent_from_samples,
     _latest_quota_and_funds,
+    _monthly_api_cost_usd,
+    _monthly_token_total,
     _quota_period_start,
     _quota_from_payload,
     _session_is_running,
@@ -38,6 +40,37 @@ def _token_event(timestamp: datetime, total_tokens: int) -> dict[str, object]:
                 }
             },
         },
+    }
+
+
+def _priced_token_event(
+    timestamp: datetime,
+    input_tokens: int,
+    cached_input_tokens: int,
+    output_tokens: int,
+) -> dict[str, object]:
+    return {
+        "timestamp": timestamp.isoformat(),
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "input_tokens": input_tokens,
+                    "cached_input_tokens": cached_input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                }
+            },
+        },
+    }
+
+
+def _model_event(timestamp: datetime, model: str) -> dict[str, object]:
+    return {
+        "timestamp": timestamp.isoformat(),
+        "type": "turn_context",
+        "payload": {"model": model},
     }
 
 
@@ -276,6 +309,73 @@ class CodexProviderTests(unittest.TestCase):
                 self.assertEqual(_token_total_since(old_start), 1950)
                 self.assertEqual(_token_total_since(new_start), 150)
 
+    def test_monthly_api_cost_uses_model_and_token_type_prices(self) -> None:
+        month_start = datetime(2026, 7, 1, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions = root / "sessions"
+            archived = root / "archived_sessions"
+            sessions.mkdir()
+            archived.mkdir()
+            path = sessions / "cost.jsonl"
+            initial_events = (
+                _model_event(month_start - timedelta(minutes=2), "gpt-5.6-sol"),
+                _priced_token_event(
+                    month_start - timedelta(minutes=1),
+                    1000,
+                    400,
+                    100,
+                ),
+                _priced_token_event(
+                    month_start + timedelta(hours=1),
+                    2_001_000,
+                    1_000_400,
+                    100_100,
+                ),
+            )
+            path.write_text(
+                "\n".join(json.dumps(event) for event in initial_events) + "\n"
+            )
+            fresh_timestamp = (month_start + timedelta(hours=2)).timestamp()
+            os.utime(path, (fresh_timestamp, fresh_timestamp))
+
+            with (
+                mock.patch(
+                    "vibe_stick.codex.local_observer.SESSIONS_DIR",
+                    sessions,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer.ARCHIVED_SESSIONS_DIR",
+                    archived,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._MONTHLY_COST_PERIOD_START",
+                    None,
+                ),
+                mock.patch(
+                    "vibe_stick.codex.local_observer._MONTHLY_COST_FILE_CACHE",
+                    {},
+                ),
+            ):
+                self.assertEqual(_monthly_api_cost_usd(month_start), 8.5)
+                self.assertEqual(_monthly_token_total(month_start), 2_100_000)
+                with path.open("a") as handle:
+                    for event in (
+                        _model_event(
+                            month_start + timedelta(hours=2),
+                            "gpt-5.3-codex",
+                        ),
+                        _priced_token_event(
+                            month_start + timedelta(hours=3),
+                            3_001_000,
+                            1_000_400,
+                            100_100,
+                        ),
+                    ):
+                        handle.write(json.dumps(event) + "\n")
+                self.assertEqual(_monthly_api_cost_usd(month_start), 10.25)
+                self.assertEqual(_monthly_token_total(month_start), 3_100_000)
+
     def test_session_running_count_uses_task_lifecycle(self) -> None:
         now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)
         started = {
@@ -468,10 +568,30 @@ class CodexProviderTests(unittest.TestCase):
         self.assertIsNotNone(quota)
         self.assertEqual(quota.quota_7d_remaining, 83)
         self.assertEqual(quota.quota_7d_reset_days, 7)
+        self.assertEqual(quota.quota_7d_reset_minutes, 8641)
         self.assertEqual(
             _quota_period_start(quota),
             now + timedelta(seconds=1) - timedelta(days=1),
         )
+
+    def test_five_hour_reset_timestamp_maps_to_rounded_up_minutes(self) -> None:
+        now = datetime(2026, 7, 30, 1, 0, tzinfo=timezone.utc)
+        payload = {
+            "type": "token_count",
+            "rate_limits": {
+                "primary": {
+                    "used_percent": 46,
+                    "window_minutes": 300,
+                    "resets_at": now.timestamp() + 3 * 3600 + 23 * 60 + 1,
+                }
+            },
+        }
+
+        quota = _quota_from_payload(payload, now, now)
+
+        self.assertIsNotNone(quota)
+        self.assertEqual(quota.quota_5h_remaining, 54)
+        self.assertEqual(quota.quota_5h_reset_minutes, 204)
 
     def test_special_model_quota_does_not_replace_main_codex_quota(self) -> None:
         now = datetime(2026, 7, 29, tzinfo=timezone.utc)
@@ -560,6 +680,8 @@ class CodexProviderTests(unittest.TestCase):
                     "09:40",
                     False,
                     quota_7d_reset_days=5,
+                    quota_5h_reset_minutes=204,
+                    quota_7d_reset_minutes=7250,
                 ),
                 quota_found=True,
                 alert_type="DONE",
@@ -570,6 +692,8 @@ class CodexProviderTests(unittest.TestCase):
                 funds_balance="12.50",
                 today_spend="1.25",
                 today_tokens=5800000,
+                month_cost_usd=12.75,
+                month_tokens=123_456_789,
                 today_used_percent=16,
                 running_tasks=2,
                 waiting_tasks=3,
@@ -580,14 +704,18 @@ class CodexProviderTests(unittest.TestCase):
         self.assertEqual(observation.display_name, "Codex")
         self.assertEqual(observation.status, AgentStatus.DONE)
         self.assertEqual(observation.quota_5h_remaining, 66)
+        self.assertEqual(observation.quota_5h_reset_minutes, 204)
         self.assertEqual(observation.quota_7d_remaining, 96)
         self.assertEqual(observation.quota_7d_reset_days, 5)
+        self.assertEqual(observation.quota_7d_reset_minutes, 7250)
         self.assertEqual(observation.alert_type, "DONE")
         self.assertEqual(observation.alert_event_id, f"evt_{timestamp.astimezone().strftime('%Y%m%d_%H%M%S')}_done")
         self.assertEqual(observation.latest_event_timestamp, timestamp)
         self.assertEqual(observation.funds_balance, "12.50")
         self.assertEqual(observation.today_spend, "1.25")
         self.assertEqual(observation.today_tokens, 5800000)
+        self.assertEqual(observation.month_cost_usd, 12.75)
+        self.assertEqual(observation.month_tokens, 123_456_789)
         self.assertEqual(observation.today_used_percent, 16)
         self.assertEqual(observation.running_tasks, 2)
         self.assertEqual(observation.waiting_tasks, 3)

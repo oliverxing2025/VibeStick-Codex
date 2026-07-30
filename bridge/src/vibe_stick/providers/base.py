@@ -22,10 +22,14 @@ class ProviderObservation:
     alert_message: str
     alert_event_id: str
     latest_event_timestamp: datetime | None = None
+    quota_5h_reset_minutes: int | None = None
+    quota_7d_reset_minutes: int | None = None
     quota_7d_reset_days: int | None = None
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    month_cost_usd: float | None = None
+    month_tokens: int | None = None
     today_used_percent: int | None = None
     running_tasks: int = 0
     waiting_tasks: int = 0

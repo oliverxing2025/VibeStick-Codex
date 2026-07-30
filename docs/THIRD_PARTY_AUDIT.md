@@ -1,6 +1,6 @@
 # Third-Party Audit
 
-This audit documents the v0.1.1 repository state after cleanup.
+This audit documents the v0.1.5 repository and public firmware package.
 
 | Project / file / dependency | Source | Current use | License status | Risk | Recommendation |
 | --- | --- | --- | --- | --- | --- |
@@ -14,8 +14,9 @@ This audit documents the v0.1.1 repository state after cleanup.
 | `firmware/sticks3/generated/vibe_stick_ui_assets.c/.h` | Generated from project-owned PNG icons | LVGL image descriptors for provider icons | MIT under this repository | Low | Keep. |
 | `firmware/sticks3/generated/vibe_stick_cn_16.c` | Generated from Noto Sans SC Regular | LVGL Chinese glyph subset for StickS3 UI | Source font is SIL Open Font License 1.1; complete text bundled at `firmware/sticks3/third_party/noto-sans-sc/OFL.txt` | Low | Keep the NOTICE attribution and bundled OFL text. Do not use the reserved font name as a VibeStick brand. |
 | `firmware/sticks3/third_party/bmi270/` | Bosch Sensortec BMI270 Sensor API | Vendored IMU driver source | BSD-3-Clause-style license retained with the source | Low | Keep the source headers and bundled license intact. |
-| `firmware/sticks3/src/idf_component.yml` dependencies: `espressif/button`, `espressif/esp_codec_dev`, `lvgl/lvgl` | ESP Component Registry | Build-time firmware dependencies | External open-source components, not vendored after cleanup | Low | Keep dependency manifest and lock file. Review component licenses before binary release. |
-| ESP-IDF framework | Espressif | Firmware framework | External SDK, not vendored | Low | Keep as build prerequisite. |
+| `espressif/button` 4.2.0, `espressif/cmake_utilities` 1.1.1, and `espressif/esp_codec_dev` 1.5.10 | ESP Component Registry | Build-time firmware dependencies included in the linked image | Apache License 2.0; license texts verified in the resolved component sources | Low | Keep the dependency manifest/lock file and include Apache-2.0 in binary distributions. |
+| `lvgl/lvgl` 9.2.0 | ESP Component Registry | UI library included in the linked image | MIT; `LICENCE.txt` verified in the resolved component source | Low | Include the LVGL MIT license in binary distributions. |
+| ESP-IDF framework 5.5.3 | Espressif | Firmware framework included in the linked image | Apache License 2.0; framework license verified locally | Low | Keep as build prerequisite and include Apache-2.0 in binary distributions. |
 | Groq ASR API | Optional external service | Optional speech-to-text when configured | Service API, no source vendored | Medium | Document that audio leaves the Mac when Groq is configured. Do not commit API keys. |
 | Local Codex session files | User-local Codex data | Quota/status observation from `~/.codex/sessions/**/*.jsonl` | User-local data, not vendored | Medium | Keep local-only. Do not upload or commit session data. |
 | Historical VoiceStick / StickS3VoiceKit / VoiceStickTrial directories outside this repository | Local historical reference directories in the parent workspace | Not part of VibeStick repository | Source/license uncertain from local copy | High | Do not copy into VibeStick. Do not publish as part of this repository. |
@@ -27,4 +28,4 @@ This audit documents the v0.1.1 repository state after cleanup.
 
 This repository is derived from Gary Zhang's MIT-licensed VibeStick project. The original copyright and MIT permission notice are retained in `LICENSE` and the relationship is documented in `NOTICE`. The landscape dashboard acknowledges CodeBuddy as a visual and information-architecture reference; its implementation is project-authored ESP-IDF/LVGL code, and no CodeBuddy source code or artwork is redistributed here. Vendored third-party materials are limited to the Bosch BMI270 driver and the generated Chinese LVGL glyph subset derived from Noto Sans SC; their license notices remain with the repository. Other build-time firmware dependencies are resolved through the ESP-IDF component manager.
 
-Before a public binary release, review the exact ESP-IDF/component licenses included in the firmware image and ensure the Noto Sans SC attribution and bundled OFL text remain in the distribution.
+The v0.1.5 public firmware package includes the project MIT license, Apache-2.0, LVGL MIT, Bosch BMI270, and Noto Sans SC OFL texts together with `NOTICE`. Re-run this check whenever the ESP-IDF or component lock versions change.

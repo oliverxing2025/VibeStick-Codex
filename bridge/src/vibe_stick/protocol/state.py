@@ -28,13 +28,17 @@ class CodexState:
     status: AgentStatus = AgentStatus.IDLE
     project: str = "vibestick"
     quota_5h_remaining: int | None = None
+    quota_5h_reset_minutes: int | None = None
     quota_7d_remaining: int | None = None
     quota_7d_reset_days: int | None = None
+    quota_7d_reset_minutes: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    month_cost_usd: float | None = None
+    month_tokens: int | None = None
     today_used_percent: int | None = None
     running_tasks: int = 0
     waiting_tasks: int = 0
@@ -49,13 +53,17 @@ class ProviderState:
     status: AgentStatus = AgentStatus.IDLE
     project: str = "vibestick"
     quota_5h_remaining: int | None = None
+    quota_5h_reset_minutes: int | None = None
     quota_7d_remaining: int | None = None
     quota_7d_reset_days: int | None = None
+    quota_7d_reset_minutes: int | None = None
     quota_updated_at: str = ""
     quota_stale: bool = False
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    month_cost_usd: float | None = None
+    month_tokens: int | None = None
     today_used_percent: int | None = None
     running_tasks: int = 0
     waiting_tasks: int = 0
@@ -130,13 +138,21 @@ def state_from_dict(data: dict[str, Any]) -> VibeStickState:
             status=AgentStatus(codex_data.get("status", AgentStatus.IDLE.value)),
             project=str(codex_data.get("project") or "vibestick"),
             quota_5h_remaining=codex_data.get("quota_5h_remaining"),
+            quota_5h_reset_minutes=_optional_int(
+                codex_data.get("quota_5h_reset_minutes")
+            ),
             quota_7d_remaining=codex_data.get("quota_7d_remaining"),
             quota_7d_reset_days=_optional_int(codex_data.get("quota_7d_reset_days")),
+            quota_7d_reset_minutes=_optional_int(
+                codex_data.get("quota_7d_reset_minutes")
+            ),
             quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
             quota_stale=bool(codex_data.get("quota_stale", False)),
             funds_balance=_optional_text(codex_data.get("funds_balance")),
             today_spend=_optional_text(codex_data.get("today_spend")),
             today_tokens=_optional_int(codex_data.get("today_tokens")),
+            month_cost_usd=_optional_float(codex_data.get("month_cost_usd")),
+            month_tokens=_optional_int(codex_data.get("month_tokens")),
             today_used_percent=_optional_percent(
                 codex_data.get("today_used_percent")
             ),
@@ -160,13 +176,21 @@ def _provider_state_from_dict(codex_data: dict[str, Any]) -> ProviderState:
         status=AgentStatus(codex_data.get("status", AgentStatus.IDLE.value)),
         project=str(codex_data.get("project") or "vibestick"),
         quota_5h_remaining=codex_data.get("quota_5h_remaining"),
+        quota_5h_reset_minutes=_optional_int(
+            codex_data.get("quota_5h_reset_minutes")
+        ),
         quota_7d_remaining=codex_data.get("quota_7d_remaining"),
         quota_7d_reset_days=_optional_int(codex_data.get("quota_7d_reset_days")),
+        quota_7d_reset_minutes=_optional_int(
+            codex_data.get("quota_7d_reset_minutes")
+        ),
         quota_updated_at=str(codex_data.get("quota_updated_at") or ""),
         quota_stale=bool(codex_data.get("quota_stale", False)),
         funds_balance=_optional_text(codex_data.get("funds_balance")),
         today_spend=_optional_text(codex_data.get("today_spend")),
         today_tokens=_optional_int(codex_data.get("today_tokens")),
+        month_cost_usd=_optional_float(codex_data.get("month_cost_usd")),
+        month_tokens=_optional_int(codex_data.get("month_tokens")),
         today_used_percent=_optional_percent(codex_data.get("today_used_percent")),
         running_tasks=_optional_int(codex_data.get("running_tasks")) or 0,
         waiting_tasks=_optional_int(codex_data.get("waiting_tasks")) or 0,
@@ -190,6 +214,15 @@ def _optional_int(value: object) -> int | None:
         return None
 
 
+def _optional_float(value: object) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _optional_percent(value: object) -> int | None:
     parsed = _optional_int(value)
     return min(100, parsed) if parsed is not None else None
@@ -200,13 +233,17 @@ def default_state() -> VibeStickState:
         status=AgentStatus.RUNNING,
         project="vibestick",
         quota_5h_remaining=None,
+        quota_5h_reset_minutes=None,
         quota_7d_remaining=None,
         quota_7d_reset_days=None,
+        quota_7d_reset_minutes=None,
         quota_updated_at="",
         quota_stale=False,
         funds_balance=None,
         today_spend=None,
         today_tokens=None,
+        month_cost_usd=None,
+        month_tokens=None,
         today_used_percent=None,
         running_tasks=0,
         waiting_tasks=0,
@@ -227,13 +264,17 @@ def default_state() -> VibeStickState:
             status=codex.status,
             project=codex.project,
             quota_5h_remaining=codex.quota_5h_remaining,
+            quota_5h_reset_minutes=codex.quota_5h_reset_minutes,
             quota_7d_remaining=codex.quota_7d_remaining,
             quota_7d_reset_days=codex.quota_7d_reset_days,
+            quota_7d_reset_minutes=codex.quota_7d_reset_minutes,
             quota_updated_at=codex.quota_updated_at,
             quota_stale=codex.quota_stale,
             funds_balance=codex.funds_balance,
             today_spend=codex.today_spend,
             today_tokens=codex.today_tokens,
+            month_cost_usd=codex.month_cost_usd,
+            month_tokens=codex.month_tokens,
             today_used_percent=codex.today_used_percent,
             running_tasks=codex.running_tasks,
             waiting_tasks=codex.waiting_tasks,

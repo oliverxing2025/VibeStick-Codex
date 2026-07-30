@@ -33,6 +33,12 @@ def observation_from_local_codex(observation: LocalCodexObservation) -> Provider
         status=observation.status,
         project=observation.project,
         quota_5h_remaining=quota.quota_5h_remaining if quota is not None else None,
+        quota_5h_reset_minutes=(
+            quota.quota_5h_reset_minutes if quota is not None else None
+        ),
+        quota_7d_reset_minutes=(
+            quota.quota_7d_reset_minutes if quota is not None else None
+        ),
         quota_7d_remaining=quota.quota_7d_remaining if quota is not None else None,
         quota_7d_reset_days=quota.quota_7d_reset_days if quota is not None else None,
         quota_updated_at=quota.quota_updated_at if quota is not None else "",
@@ -40,6 +46,8 @@ def observation_from_local_codex(observation: LocalCodexObservation) -> Provider
         funds_balance=observation.funds_balance,
         today_spend=observation.today_spend,
         today_tokens=observation.today_tokens,
+        month_cost_usd=observation.month_cost_usd,
+        month_tokens=observation.month_tokens,
         today_used_percent=observation.today_used_percent,
         running_tasks=observation.running_tasks,
         waiting_tasks=observation.waiting_tasks,

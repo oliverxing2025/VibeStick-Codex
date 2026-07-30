@@ -54,12 +54,27 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
     </td>
     <td valign="top">
       <strong>Adaptive landscape dashboard</strong><br>
-      Rotate the device to see status, reset days, quota remaining, task counts, and the animated activity matrix.
+      Rotate the device to see live status, battery, monthly usage, reset countdowns, task counts, and both quota windows.
     </td>
   </tr>
 </table>
 
-The landscape activity matrix is split into two independent quota regions: `5H` on the left shows the remaining Codex five-hour quota, while `1W` on the right shows the remaining weekly quota. A blue divider separates the two periods, and the finer-grained cells provide a more precise visual percentage. The `7D` value above the matrix is the number of days remaining until the weekly quota resets.
+### What the screens show
+
+| Screen | Display | Meaning |
+| --- | --- | --- |
+| **Landscape** | `RUNNING` / `WAITING` / `DONE` / `ERROR` / `OFFLINE` | Current Codex or bridge state. |
+| **Landscape** | Battery icon + percentage | StickS3's locally measured battery level. |
+| **Landscape** | Top-center token value, such as `2.2B` | Tokens observed since the start of the current calendar month. `K`, `M`, and `B` mean thousand, million, and billion. |
+| **Landscape** | Dollar value, such as `$1.6K` | Estimated API-equivalent USD value of the observed monthly input, cached-input, and output tokens. It is an estimate based on the configured model-price table and [OpenAI API pricing](https://openai.com/api/pricing/), not an OpenAI bill or subscription charge. |
+| **Landscape** | `6D00H` / `0H51M` | Time remaining until the weekly and five-hour quota windows reset. |
+| **Landscape** | `RUN` / `WAIT` / `FIN` | Running tasks, tasks awaiting action, and tasks completed during the current local day. |
+| **Landscape** | `5H` / `1W` percentages and particle rows | Remaining five-hour and weekly Codex quota. The blue divider separates the two independent windows. |
+| **Portrait** | `1W FUNDS` / `5H FUNDS` | Remaining weekly and five-hour Codex quota percentages. |
+| **Portrait** | `TODAY` | Current local day's consumption percentage inferred from the weekly quota samples observed by the bridge. |
+| **Portrait** | `TOKEN` | Tokens accumulated in the current rolling seven-day quota cycle, not the calendar week or month. It restarts when that quota cycle resets. |
+
+Both orientations also show connection/status information and local time. Values that the bridge cannot currently determine are shown as unavailable rather than guessed.
 
 > [!NOTE]
 > These are product renders. Minor details may differ from the current on-device firmware.
@@ -329,7 +344,7 @@ idf.py build
 
 - This is a cleaned prototype, not a packaged Mac app or DMG.
 - The firmware targets M5Stack StickS3 only.
-- `1W FUNDS` and `5H FUNDS` show the remaining weekly and five-hour Codex quotas. `TODAY` shows the corresponding usage consumed, and `TOKEN` shows tokens accumulated during the current seven-day quota cycle. `TOKEN` restarts from zero whenever that quota cycle resets. The landscape `FIN` counter shows tasks completed during the current local day. It resets after local midnight and is restored after StickS3 power cycles or firmware flashes within the same day.
+- The monthly token and USD figures are derived from locally observed Codex session records. They may be incomplete if records are unavailable, and the USD figure is an API-equivalent estimate rather than actual account billing.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
 
 ## Contributing & security

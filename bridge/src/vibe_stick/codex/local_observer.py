@@ -47,11 +47,47 @@ _TOKEN_FILE_CACHE: dict[
         tuple[datetime, int] | None,
     ],
 ] = {}
+_MONTHLY_COST_PERIOD_START: datetime | None = None
 _ARCHIVED_QUOTA_CACHE_SIGNATURE: tuple[tuple[str, int, int], ...] | None = None
 _ARCHIVED_QUOTA_CACHE: tuple[
     tuple[datetime, QuotaSnapshot] | None,
     tuple[datetime, str] | None,
 ] = (None, None)
+
+MODEL_USD_PER_MILLION_TOKENS: dict[str, tuple[float, float, float]] = {
+    "gpt-5.6-sol": (5.0, 0.5, 30.0),
+    "gpt-5.6": (5.0, 0.5, 30.0),
+    "gpt-5.6-terra": (2.5, 0.25, 15.0),
+    "gpt-5.6-luna": (1.0, 0.1, 6.0),
+    "gpt-5.5": (5.0, 0.5, 30.0),
+    "gpt-5.4": (2.5, 0.25, 15.0),
+    "gpt-5.4-mini": (0.75, 0.075, 4.52),
+    "gpt-5.3-codex": (1.75, 0.175, 14.0),
+    "gpt-5.2": (1.75, 0.175, 14.0),
+    "gpt-5.2-codex": (1.75, 0.175, 14.0),
+    "codex-auto-review": (1.75, 0.175, 14.0),
+}
+
+
+@dataclass(frozen=True)
+class _TokenUsage:
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+
+
+@dataclass
+class _MonthlyCostFileState:
+    offset: int = 0
+    model: str = ""
+    usage: _TokenUsage | None = None
+    cost_usd: float = 0.0
+    priced_any: bool = False
+    month_tokens: int = 0
+    tokens_any: bool = False
+
+
+_MONTHLY_COST_FILE_CACHE: dict[Path, _MonthlyCostFileState] = {}
 
 
 @dataclass
@@ -70,6 +106,8 @@ class LocalCodexObservation:
     funds_balance: str | None = None
     today_spend: str | None = None
     today_tokens: int | None = None
+    month_cost_usd: float | None = None
+    month_tokens: int | None = None
     today_used_percent: int | None = None
     running_tasks: int = 0
     waiting_tasks: int = 0
@@ -91,6 +129,11 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     local_today = local_now.date()
     local_day_start = datetime.combine(
         local_today,
+        time.min,
+        tzinfo=local_now.tzinfo,
+    ).astimezone(timezone.utc)
+    local_month_start = datetime.combine(
+        local_today.replace(day=1),
         time.min,
         tzinfo=local_now.tzinfo,
     ).astimezone(timezone.utc)
@@ -196,6 +239,7 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
     else:
         status = AgentStatus.IDLE
 
+    month_cost_usd = _monthly_api_cost_usd(local_month_start)
     observation = LocalCodexObservation(
         status=status,
         project=project,
@@ -206,6 +250,8 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         funds_balance=latest_funds[1] if latest_funds else None,
         today_spend=_configured_today_spend(),
         today_tokens=period_tokens,
+        month_cost_usd=month_cost_usd,
+        month_tokens=_monthly_token_total(local_month_start),
         today_used_percent=_daily_used_percent_from_samples(
             daily_baseline,
             today_weekly_used_samples,
@@ -446,6 +492,156 @@ def _token_total_since(period_start: datetime) -> int:
     return total
 
 
+def _monthly_api_cost_usd(period_start: datetime) -> float | None:
+    global _MONTHLY_COST_PERIOD_START
+
+    if _MONTHLY_COST_PERIOD_START != period_start:
+        _MONTHLY_COST_PERIOD_START = period_start
+        _MONTHLY_COST_FILE_CACHE.clear()
+
+    active_paths: set[Path] = set()
+    for path in _daily_usage_session_files(period_start):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        active_paths.add(path)
+        state = _MONTHLY_COST_FILE_CACHE.get(path, _MonthlyCostFileState())
+        if stat.st_size < state.offset:
+            state = _MonthlyCostFileState()
+        if stat.st_size != state.offset:
+            try:
+                with path.open("rb") as handle:
+                    handle.seek(state.offset)
+                    while True:
+                        line_start = handle.tell()
+                        raw_line = handle.readline()
+                        if not raw_line:
+                            state.offset = handle.tell()
+                            break
+                        if not raw_line.endswith(b"\n"):
+                            state.offset = line_start
+                            break
+                        state.offset = handle.tell()
+                        try:
+                            event = json.loads(raw_line.decode("utf-8"))
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        payload = event.get("payload")
+                        payload = payload if isinstance(payload, dict) else {}
+                        if event.get("type") == "turn_context":
+                            model = payload.get("model")
+                            if isinstance(model, str) and model.strip():
+                                state.model = model.strip().lower()
+                            continue
+                        usage = _priced_token_usage_from_payload(payload)
+                        if usage is None:
+                            continue
+                        timestamp = _parse_timestamp(event.get("timestamp"))
+                        if timestamp is not None and timestamp >= period_start:
+                            delta = _token_usage_delta(state.usage, usage)
+                            state.month_tokens += (
+                                delta.input_tokens + delta.output_tokens
+                            )
+                            state.tokens_any = True
+                            cost = _token_usage_cost_usd(delta, state.model)
+                            if cost is not None:
+                                state.cost_usd += cost
+                                state.priced_any = True
+                        state.usage = usage
+            except OSError:
+                continue
+        _MONTHLY_COST_FILE_CACHE[path] = state
+
+    for cached_path in set(_MONTHLY_COST_FILE_CACHE) - active_paths:
+        _MONTHLY_COST_FILE_CACHE.pop(cached_path, None)
+
+    priced_states = [
+        state for state in _MONTHLY_COST_FILE_CACHE.values() if state.priced_any
+    ]
+    if not priced_states:
+        return None
+    return round(sum(state.cost_usd for state in priced_states), 2)
+
+
+def _monthly_token_total(period_start: datetime) -> int | None:
+    _monthly_api_cost_usd(period_start)
+    token_states = [
+        state for state in _MONTHLY_COST_FILE_CACHE.values() if state.tokens_any
+    ]
+    if not token_states:
+        return None
+    return sum(state.month_tokens for state in token_states)
+
+
+def _priced_token_usage_from_payload(payload: dict[str, Any]) -> _TokenUsage | None:
+    if payload.get("type") != "token_count":
+        return None
+    info = payload.get("info")
+    usage = info.get("total_token_usage") if isinstance(info, dict) else None
+    if not isinstance(usage, dict):
+        return None
+
+    def token_value(key: str) -> int:
+        value = usage.get(key)
+        if isinstance(value, bool):
+            return 0
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 0
+
+    return _TokenUsage(
+        input_tokens=token_value("input_tokens"),
+        cached_input_tokens=token_value("cached_input_tokens"),
+        output_tokens=token_value("output_tokens"),
+    )
+
+
+def _token_usage_delta(
+    previous: _TokenUsage | None,
+    current: _TokenUsage,
+) -> _TokenUsage:
+    if previous is None:
+        return current
+
+    def delta(current_value: int, previous_value: int) -> int:
+        return (
+            current_value - previous_value
+            if current_value >= previous_value
+            else current_value
+        )
+
+    return _TokenUsage(
+        input_tokens=delta(current.input_tokens, previous.input_tokens),
+        cached_input_tokens=delta(
+            current.cached_input_tokens,
+            previous.cached_input_tokens,
+        ),
+        output_tokens=delta(current.output_tokens, previous.output_tokens),
+    )
+
+
+def _token_usage_cost_usd(usage: _TokenUsage, model: str) -> float | None:
+    pricing_model = model.strip().lower()
+    override = os.environ.get("VIBE_STICK_CODEX_PRICING_MODEL", "").strip().lower()
+    prices = MODEL_USD_PER_MILLION_TOKENS.get(pricing_model)
+    if prices is None and override:
+        prices = MODEL_USD_PER_MILLION_TOKENS.get(override)
+    if prices is None:
+        return None
+    input_price, cached_input_price, output_price = prices
+    cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
+    uncached_tokens = max(0, usage.input_tokens - cached_tokens)
+    return (
+        uncached_tokens * input_price
+        + cached_tokens * cached_input_price
+        + usage.output_tokens * output_price
+    ) / 1_000_000.0
+
+
 def _quota_period_start(snapshot: QuotaSnapshot | None) -> datetime | None:
     if snapshot is None or snapshot.quota_7d_resets_at is None:
         return None
@@ -613,8 +809,10 @@ def _quota_from_payload(
         return None
 
     five_hour = None
+    five_hour_reset_minutes = None
     seven_day = None
     seven_day_reset_days = None
+    seven_day_reset_minutes = None
     seven_day_resets_at = None
     for window in ("primary", "secondary"):
         data = rate_limits.get(window)
@@ -624,9 +822,15 @@ def _quota_from_payload(
         minutes = data.get("window_minutes")
         if minutes == 300:
             five_hour = remaining
+            five_hour_reset_minutes = _minutes_until_reset(
+                data.get("resets_at"), now
+            )
         elif minutes == 10080:
             seven_day = remaining
             seven_day_reset_days = _days_until_reset(data.get("resets_at"), now)
+            seven_day_reset_minutes = _minutes_until_reset(
+                data.get("resets_at"), now
+            )
             try:
                 seven_day_resets_at = float(data.get("resets_at"))
             except (TypeError, ValueError):
@@ -642,8 +846,10 @@ def _quota_from_payload(
 
     return QuotaSnapshot(
         quota_5h_remaining=five_hour,
+        quota_5h_reset_minutes=five_hour_reset_minutes,
         quota_7d_remaining=seven_day,
         quota_7d_reset_days=seven_day_reset_days,
+        quota_7d_reset_minutes=seven_day_reset_minutes,
         quota_updated_at=timestamp.astimezone().strftime("%H:%M"),
         quota_stale=now - timestamp > QUOTA_STALE_AFTER,
         quota_7d_resets_at=seven_day_resets_at,
@@ -747,6 +953,17 @@ def _remaining_percent(used_percent: object) -> int | None:
     except (TypeError, ValueError):
         return None
     return max(0, min(100, int(round(100.0 - used))))
+
+
+def _minutes_until_reset(resets_at: object, now: datetime) -> int | None:
+    try:
+        reset_timestamp = float(resets_at)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(reset_timestamp):
+        return None
+    seconds_left = max(0.0, reset_timestamp - now.timestamp())
+    return int(math.ceil(seconds_left / 60.0))
 
 
 def _days_until_reset(resets_at: object, now: datetime) -> int | None:

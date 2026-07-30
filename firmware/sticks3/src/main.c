@@ -52,7 +52,17 @@
 #define ACTIVITY_ROWS 3
 #define ACTIVITY_SEGMENT_COLUMNS 28
 #define ACTIVITY_WEEK_START_COLUMN 29
+#define ACTIVITY_GAP_COLUMN (ACTIVITY_WEEK_START_COLUMN - 1)
+#define ACTIVITY_GRID_X 6
+#define ACTIVITY_CELL_WIDTH 3
+#define ACTIVITY_CELL_PITCH 4
+#define ACTIVITY_DIVIDER_X \
+    (ACTIVITY_GRID_X + ACTIVITY_GAP_COLUMN * ACTIVITY_CELL_PITCH + \
+     ACTIVITY_CELL_WIDTH / 2)
 #define ACTIVITY_FRAME_MS 36
+
+_Static_assert(ACTIVITY_WEEK_START_COLUMN == ACTIVITY_SEGMENT_COLUMNS + 1,
+               "activity grid must keep exactly one divider gap column");
 #define ORIENTATION_SAMPLE_MS 230
 #define ORIENTATION_STABLE_SAMPLES 3
 
@@ -108,17 +118,25 @@ typedef struct {
     char codex_status[24];
     char project[40];
     int quota_5h;
+    int quota_5h_reset_minutes;
     int quota_7d;
     int quota_7d_reset_days;
+    int quota_7d_reset_minutes;
     bool quota_5h_valid;
+    bool quota_5h_reset_minutes_valid;
     bool quota_7d_valid;
     bool quota_7d_reset_days_valid;
+    bool quota_7d_reset_minutes_valid;
     char quota_updated_at[8];
     bool quota_stale;
     char funds_balance[20];
     char today_spend[20];
     int today_tokens;
     bool today_tokens_valid;
+    double month_cost_usd;
+    bool month_cost_usd_valid;
+    int64_t month_tokens;
+    bool month_tokens_valid;
     int today_used_percent;
     bool today_used_percent_valid;
     int running_tasks;
@@ -133,17 +151,25 @@ typedef struct {
     char status[24];
     char project[40];
     int quota_5h;
+    int quota_5h_reset_minutes;
     int quota_7d;
     int quota_7d_reset_days;
+    int quota_7d_reset_minutes;
     bool quota_5h_valid;
+    bool quota_5h_reset_minutes_valid;
     bool quota_7d_valid;
     bool quota_7d_reset_days_valid;
+    bool quota_7d_reset_minutes_valid;
     char quota_updated_at[8];
     bool quota_stale;
     char funds_balance[20];
     char today_spend[20];
     int today_tokens;
     bool today_tokens_valid;
+    double month_cost_usd;
+    bool month_cost_usd_valid;
+    int64_t month_tokens;
+    bool month_tokens_valid;
     int today_used_percent;
     bool today_used_percent_valid;
     int running_tasks;
@@ -195,9 +221,10 @@ static lv_obj_t *s_recording_wave_group;
 static lv_obj_t *s_recording_wave_bars[5];
 static lv_obj_t *s_recording_title;
 static lv_obj_t *s_recording_hint;
-static lv_obj_t *s_seconds_label;
+static lv_obj_t *s_month_cost_label;
+static lv_obj_t *s_month_tokens_label;
 static lv_obj_t *s_days_left_label;
-static lv_obj_t *s_percent_left_label;
+static lv_obj_t *s_five_hour_reset_label;
 static lv_obj_t *s_date_group;
 static lv_obj_t *s_date_label;
 static lv_obj_t *s_date_separator;
@@ -225,17 +252,25 @@ static agent_state_t s_state = {
     .codex_status = "OFFLINE",
     .project = "vibestick",
     .quota_5h = 0,
+    .quota_5h_reset_minutes = 0,
     .quota_7d = 0,
     .quota_7d_reset_days = 0,
+    .quota_7d_reset_minutes = 0,
     .quota_5h_valid = false,
+    .quota_5h_reset_minutes_valid = false,
     .quota_7d_valid = false,
     .quota_7d_reset_days_valid = false,
+    .quota_7d_reset_minutes_valid = false,
     .quota_updated_at = "",
     .quota_stale = false,
     .funds_balance = "",
     .today_spend = "",
     .today_tokens = 0,
     .today_tokens_valid = false,
+    .month_cost_usd = 0.0,
+    .month_cost_usd_valid = false,
+    .month_tokens = 0,
+    .month_tokens_valid = false,
     .today_used_percent = 0,
     .today_used_percent_valid = false,
     .running_tasks = 0,
@@ -251,17 +286,25 @@ static provider_display_state_t s_provider_states[PROVIDER_COUNT] = {
         .status = "OFFLINE",
         .project = "vibestick",
         .quota_5h = 0,
+        .quota_5h_reset_minutes = 0,
         .quota_7d = 0,
         .quota_7d_reset_days = 0,
+        .quota_7d_reset_minutes = 0,
         .quota_5h_valid = false,
+        .quota_5h_reset_minutes_valid = false,
         .quota_7d_valid = false,
         .quota_7d_reset_days_valid = false,
+        .quota_7d_reset_minutes_valid = false,
         .quota_updated_at = "",
         .quota_stale = false,
         .funds_balance = "",
         .today_spend = "",
         .today_tokens = 0,
         .today_tokens_valid = false,
+        .month_cost_usd = 0.0,
+        .month_cost_usd_valid = false,
+        .month_tokens = 0,
+        .month_tokens_valid = false,
         .today_used_percent = 0,
         .today_used_percent_valid = false,
         .running_tasks = 0,
@@ -576,20 +619,23 @@ static void set_battery_ui(int battery_value, bool charging, bool usb_powered)
     }
 
     char battery[8];
-    if (battery_value > 0) {
-        snprintf(battery, sizeof(battery), "%d%%", battery_value);
-    } else {
-        snprintf(battery, sizeof(battery), "--%%");
-    }
+    snprintf(battery, sizeof(battery), "%d%%", battery_value);
     lv_label_set_text(s_battery_label, battery);
 
-    int fill_width = battery_value > 0 ? (battery_value * 20) / 100 : 0;
+    int max_fill_width = lv_obj_get_width(s_battery_icon) - 6;
+    if (max_fill_width < 1) {
+        max_fill_width = 1;
+    }
+    int fill_width =
+        battery_value > 0 ? (battery_value * max_fill_width) / 100 : 0;
     if (fill_width < 1 && battery_value > 0) {
         fill_width = 1;
     }
 
     const bool external_power = charging || usb_powered;
-    const lv_color_t normal_color = lv_color_hex(0xf3f4f6);
+    const lv_color_t normal_color =
+        s_landscape_active ? lv_color_hex(0x41c7ff)
+                           : lv_color_hex(0xf3f4f6);
     const lv_color_t charging_color = lv_color_hex(0x32d583);
 
     lv_obj_set_style_border_color(s_battery_icon, normal_color, 0);
@@ -745,6 +791,9 @@ static void activity_timer_cb(lv_timer_t *timer)
         weekly_active_columns != s_activity_7d_active_columns) {
         for (int row = 0; row < ACTIVITY_ROWS; ++row) {
             for (int col = 0; col < ACTIVITY_COLUMNS; ++col) {
+                if (!s_activity_cells[row][col]) {
+                    continue;
+                }
                 const bool active_5h =
                     col < five_hour_active_columns;
                 const bool active_7d =
@@ -824,21 +873,15 @@ static void layout_landscape_date_row(const char *date_text,
     lv_obj_set_size(s_weekday_label, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_update_layout(s_date_group);
     int32_t date_width = lv_obj_get_width(s_date_label);
-    int32_t weekday_width = lv_obj_get_width(s_weekday_label);
-    int32_t content_width =
-        date_width + separator_gap + separator_size + separator_gap +
-        weekday_width;
-    int32_t content_x = (LCD_V_RES - content_width) / 2;
-    lv_obj_set_pos(s_date_label, content_x, 4);
-    lv_obj_set_pos(s_date_separator,
-                   content_x + date_width + separator_gap, 11);
+    const int32_t separator_x =
+        ACTIVITY_DIVIDER_X - separator_size / 2;
+    lv_obj_set_pos(s_date_label,
+                   separator_x - separator_gap - date_width, 4);
+    lv_obj_set_pos(s_date_separator, separator_x, 11);
     lv_obj_set_pos(s_weekday_label,
-                   content_x + date_width + separator_gap + separator_size +
-                       separator_gap,
-                   4);
+                   separator_x + separator_size + separator_gap, 4);
     if (s_activity_divider) {
-        const int32_t divider_x =
-            lv_obj_get_x(s_date_separator) + separator_size / 2;
+        const int32_t divider_x = ACTIVITY_DIVIDER_X;
         lv_obj_set_x(s_activity_divider, divider_x);
         if (s_activity_5h_percent_label) {
             lv_obj_set_x(s_activity_5h_percent_label,
@@ -890,24 +933,54 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_status_label = make_label(screen, "RUNNING", &lv_font_montserrat_12,
                                 lv_color_hex(0xc6f24a), 78, LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 17, 2);
-    lv_obj_t *top_line = make_plain_obj(screen, 45, 1, lv_color_hex(0x56606a),
-                                        LV_OPA_COVER, 0);
-    lv_obj_align(top_line, LV_ALIGN_TOP_RIGHT, -5, 9);
+    s_battery_icon = make_plain_obj(screen, 32, 12, lv_color_hex(0x000000),
+                                    LV_OPA_TRANSP, 3);
+    lv_obj_set_style_border_width(s_battery_icon, 1, 0);
+    lv_obj_set_style_border_color(s_battery_icon, lv_color_hex(0x41c7ff), 0);
+    lv_obj_align(s_battery_icon, LV_ALIGN_TOP_LEFT, 176, 4);
+    s_battery_fill = make_plain_obj(s_battery_icon, 1, 8,
+                                    lv_color_hex(0x41c7ff),
+                                    LV_OPA_COVER, 2);
+    lv_obj_align(s_battery_fill, LV_ALIGN_LEFT_MID, 2, 0);
+    s_battery_bolt = lv_line_create(s_battery_icon);
+    lv_line_set_points(
+        s_battery_bolt, s_battery_bolt_points,
+        sizeof(s_battery_bolt_points) / sizeof(s_battery_bolt_points[0]));
+    lv_obj_set_style_line_width(s_battery_bolt, 1, 0);
+    lv_obj_set_style_line_color(s_battery_bolt, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_line_rounded(s_battery_bolt, true, 0);
+    lv_obj_align(s_battery_bolt, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(s_battery_bolt, LV_OBJ_FLAG_HIDDEN);
+    s_battery_cap = make_plain_obj(screen, 1, 4, lv_color_hex(0x41c7ff),
+                                   LV_OPA_COVER, 1);
+    lv_obj_align_to(s_battery_cap, s_battery_icon,
+                    LV_ALIGN_OUT_RIGHT_MID, 1, 0);
+    s_battery_label = make_label(screen, "--%", &lv_font_montserrat_10,
+                                 lv_color_hex(0xd8dde3), 38,
+                                 LV_TEXT_ALIGN_LEFT);
+    lv_obj_set_style_text_letter_space(s_battery_label, -1, 0);
+    lv_obj_align(s_battery_label, LV_ALIGN_TOP_LEFT, 216, 3);
+    s_month_tokens_label =
+        make_label(screen, "--", &lv_font_montserrat_10,
+                   lv_color_hex(0xe7d86f), 60, LV_TEXT_ALIGN_CENTER);
+    lv_obj_align(s_month_tokens_label, LV_ALIGN_TOP_LEFT,
+                 ACTIVITY_DIVIDER_X - 30, 3);
 
     s_time_label = make_label(screen, "--:--", &lv_font_montserrat_36,
                               lv_color_hex(0xf2f4f7), 126, LV_TEXT_ALIGN_LEFT);
     lv_obj_align(s_time_label, LV_ALIGN_TOP_LEFT, 10, 26);
-    s_seconds_label = make_label(screen, "--", &lv_font_montserrat_16,
-                                 lv_color_hex(0xc9d1d9), 38, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_seconds_label, LV_ALIGN_TOP_LEFT, 134, 23);
-    s_days_left_label = make_label(screen, "--D", &lv_font_montserrat_16,
-                                   lv_color_hex(0xd8dde3), 38,
+    s_month_cost_label = make_label(screen, "$--", &lv_font_montserrat_12,
+                                    lv_color_hex(0xc9d1d9), 42,
+                                    LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_month_cost_label, LV_ALIGN_TOP_LEFT, 132, 26);
+    s_days_left_label = make_label(screen, "--D--H", &lv_font_montserrat_12,
+                                   lv_color_hex(0xd8dde3), 42,
                                    LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_days_left_label, LV_ALIGN_TOP_LEFT, 134, 41);
-    s_percent_left_label = make_label(screen, "--%", &lv_font_montserrat_16,
-                                      lv_color_hex(0xd8dde3), 38,
-                                      LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_percent_left_label, LV_ALIGN_TOP_LEFT, 134, 59);
+    lv_obj_align(s_days_left_label, LV_ALIGN_TOP_LEFT, 132, 43);
+    s_five_hour_reset_label =
+        make_label(screen, "--H--M", &lv_font_montserrat_12,
+                   lv_color_hex(0xd8dde3), 42, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_five_hour_reset_label, LV_ALIGN_TOP_LEFT, 132, 62);
 
     static const char *counter_names[3] = {"RUN", "WAIT", "FIN"};
     static const uint32_t counter_colors[3] = {0xb8e63a, 0xa88bff, 0x41c7ff};
@@ -959,7 +1032,12 @@ static void create_landscape_ui(lv_obj_t *screen)
 
     for (int row = 0; row < ACTIVITY_ROWS; ++row) {
         for (int col = 0; col < ACTIVITY_COLUMNS; ++col) {
-            s_activity_cells[row][col] = make_plain_obj(screen, 3, 4,
+            if (col == ACTIVITY_GAP_COLUMN) {
+                s_activity_cells[row][col] = NULL;
+                continue;
+            }
+            s_activity_cells[row][col] = make_plain_obj(screen,
+                                                        ACTIVITY_CELL_WIDTH, 4,
                                                         lv_color_hex(0x30353a),
                                                         LV_OPA_COVER, 1);
             lv_obj_set_style_border_width(s_activity_cells[row][col], 1, 0);
@@ -967,7 +1045,8 @@ static void create_landscape_ui(lv_obj_t *screen)
                                         LV_OPA_COVER, 0);
             lv_obj_set_style_border_color(s_activity_cells[row][col],
                                           lv_color_hex(0x262a2e), 0);
-            lv_obj_set_pos(s_activity_cells[row][col], 6 + col * 4,
+            lv_obj_set_pos(s_activity_cells[row][col],
+                           ACTIVITY_GRID_X + col * ACTIVITY_CELL_PITCH,
                            110 + row * 6);
         }
     }
@@ -1177,6 +1256,47 @@ static void set_token_label(lv_obj_t *label, int value, bool valid)
     lv_label_set_text(label, text);
 }
 
+static void set_month_cost_label(lv_obj_t *label, double value, bool valid)
+{
+    if (!valid || value < 0.0) {
+        lv_label_set_text(label, "$--");
+        return;
+    }
+    char text[16];
+    if (value < 100.0) {
+        snprintf(text, sizeof(text), "$%.1f", value);
+    } else if (value < 1000.0) {
+        snprintf(text, sizeof(text), "$%.0f", value);
+    } else if (value < 10000.0) {
+        snprintf(text, sizeof(text), "$%.1fK", value / 1000.0);
+    } else {
+        snprintf(text, sizeof(text), "$%.0fK", value / 1000.0);
+    }
+    lv_label_set_text(label, text);
+}
+
+static void set_month_tokens_label(lv_obj_t *label, int64_t value, bool valid)
+{
+    if (!valid || value < 0) {
+        lv_label_set_text(label, "--");
+        return;
+    }
+    char text[20];
+    if (value >= 1000000000LL) {
+        snprintf(text, sizeof(text), "%.1fB",
+                 (double)value / 1000000000.0);
+    } else if (value >= 1000000LL) {
+        snprintf(text, sizeof(text), "%.1fM",
+                 (double)value / 1000000.0);
+    } else if (value >= 1000LL) {
+        snprintf(text, sizeof(text), "%.1fK",
+                 (double)value / 1000.0);
+    } else {
+        snprintf(text, sizeof(text), "%lld", (long long)value);
+    }
+    lv_label_set_text(label, text);
+}
+
 static void render_state(void)
 {
     lvgl_lock();
@@ -1186,30 +1306,47 @@ static void render_state(void)
 
     if (s_landscape_active) {
         char hour_minute[6] = "--:--";
-        char seconds[3] = "--";
         if (strlen(s_state.time) >= 5) {
             memcpy(hour_minute, s_state.time, 5);
             hour_minute[5] = '\0';
         }
-        if (strlen(s_state.time) >= 8) {
-            memcpy(seconds, s_state.time + 6, 2);
-            seconds[2] = '\0';
-        }
         lv_label_set_text(s_time_label, hour_minute);
-        lv_label_set_text(s_seconds_label, seconds);
-        char days_left_text[12] = "--D";
-        if (display_state->quota_7d_reset_days_valid) {
+        set_month_cost_label(
+            s_month_cost_label,
+            display_state->month_cost_usd,
+            display_state->month_cost_usd_valid);
+        set_month_tokens_label(
+            s_month_tokens_label,
+            display_state->month_tokens,
+            display_state->month_tokens_valid);
+        char days_left_text[12] = "--D--H";
+        if (display_state->quota_7d_reset_minutes_valid) {
+            int total_minutes = display_state->quota_7d_reset_minutes;
+            if (total_minutes < 0) {
+                total_minutes = 0;
+            }
+            int days_left = total_minutes / (24 * 60);
+            int hours_within_day = (total_minutes % (24 * 60)) / 60;
+            snprintf(days_left_text, sizeof(days_left_text), "%dD%02dH",
+                     days_left, hours_within_day);
+        } else if (display_state->quota_7d_reset_days_valid) {
             int days_left = display_state->quota_7d_reset_days;
-            snprintf(days_left_text, sizeof(days_left_text), "%dD", days_left);
+            snprintf(days_left_text, sizeof(days_left_text), "%dD--H",
+                     days_left);
         }
         lv_label_set_text(s_days_left_label, days_left_text);
-        char percent_left_text[8] = "--%";
-        if (display_state->quota_7d_valid) {
-            int percent_left = display_state->quota_7d;
-            snprintf(percent_left_text, sizeof(percent_left_text), "%d%%",
-                     percent_left);
+        char five_hour_reset_text[8] = "--H--M";
+        if (display_state->quota_5h_reset_minutes_valid) {
+            int total_minutes = display_state->quota_5h_reset_minutes;
+            if (total_minutes < 0) {
+                total_minutes = 0;
+            } else if (total_minutes > 599) {
+                total_minutes = 599;
+            }
+            snprintf(five_hour_reset_text, sizeof(five_hour_reset_text),
+                     "%dH%02dM", total_minutes / 60, total_minutes % 60);
         }
-        lv_label_set_text(s_percent_left_label, percent_left_text);
+        lv_label_set_text(s_five_hour_reset_label, five_hour_reset_text);
         char five_hour_percent_text[8] = "--%";
         if (display_state->quota_5h_valid) {
             snprintf(five_hour_percent_text,
@@ -1256,6 +1393,8 @@ static void render_state(void)
             status_color = lv_color_hex(0xff5a5f);
         }
         lv_obj_set_style_text_color(s_status_label, status_color, 0);
+        set_battery_ui(s_state.battery, s_state.battery_charging,
+                       s_state.usb_powered);
 
         char running_tasks_text[4];
         int visible_running_tasks = display_state->running_tasks;
@@ -1606,13 +1745,21 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     copy_json_string(source, "quota_updated_at", target->quota_updated_at, sizeof(target->quota_updated_at));
 
     cJSON *quota_5h = cJSON_GetObjectItemCaseSensitive(source, "quota_5h_remaining");
+    cJSON *quota_5h_reset_minutes =
+        cJSON_GetObjectItemCaseSensitive(source, "quota_5h_reset_minutes");
     cJSON *quota_7d = cJSON_GetObjectItemCaseSensitive(source, "quota_7d_remaining");
     cJSON *quota_7d_reset_days =
         cJSON_GetObjectItemCaseSensitive(source, "quota_7d_reset_days");
+    cJSON *quota_7d_reset_minutes =
+        cJSON_GetObjectItemCaseSensitive(source, "quota_7d_reset_minutes");
     cJSON *stale = cJSON_GetObjectItemCaseSensitive(source, "quota_stale");
     cJSON *funds = cJSON_GetObjectItemCaseSensitive(source, "funds_balance");
     cJSON *today = cJSON_GetObjectItemCaseSensitive(source, "today_spend");
     cJSON *tokens = cJSON_GetObjectItemCaseSensitive(source, "today_tokens");
+    cJSON *month_cost_usd =
+        cJSON_GetObjectItemCaseSensitive(source, "month_cost_usd");
+    cJSON *month_tokens =
+        cJSON_GetObjectItemCaseSensitive(source, "month_tokens");
     cJSON *today_used_percent =
         cJSON_GetObjectItemCaseSensitive(source, "today_used_percent");
     cJSON *running_tasks = cJSON_GetObjectItemCaseSensitive(source, "running_tasks");
@@ -1623,6 +1770,13 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     if (target->quota_5h_valid) {
         target->quota_5h = quota_value;
     }
+    target->quota_5h_reset_minutes_valid =
+        cJSON_IsNumber(quota_5h_reset_minutes) &&
+        quota_5h_reset_minutes->valuedouble >= 0;
+    if (target->quota_5h_reset_minutes_valid) {
+        target->quota_5h_reset_minutes =
+            (int)quota_5h_reset_minutes->valuedouble;
+    }
     target->quota_7d_valid = json_percent_value(quota_7d, &quota_value);
     if (target->quota_7d_valid) {
         target->quota_7d = quota_value;
@@ -1632,6 +1786,13 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
         quota_7d_reset_days->valuedouble >= 0;
     if (target->quota_7d_reset_days_valid) {
         target->quota_7d_reset_days = (int)quota_7d_reset_days->valuedouble;
+    }
+    target->quota_7d_reset_minutes_valid =
+        cJSON_IsNumber(quota_7d_reset_minutes) &&
+        quota_7d_reset_minutes->valuedouble >= 0;
+    if (target->quota_7d_reset_minutes_valid) {
+        target->quota_7d_reset_minutes =
+            (int)quota_7d_reset_minutes->valuedouble;
     }
     target->quota_stale = cJSON_IsBool(stale) ? cJSON_IsTrue(stale) : false;
     if (cJSON_IsString(funds) && funds->valuestring) {
@@ -1650,6 +1811,20 @@ static void parse_provider_fields(cJSON *source, provider_display_state_t *targe
     } else {
         target->today_tokens = 0;
         target->today_tokens_valid = false;
+    }
+    if (cJSON_IsNumber(month_cost_usd) && month_cost_usd->valuedouble >= 0.0) {
+        target->month_cost_usd = month_cost_usd->valuedouble;
+        target->month_cost_usd_valid = true;
+    } else {
+        target->month_cost_usd = 0.0;
+        target->month_cost_usd_valid = false;
+    }
+    if (cJSON_IsNumber(month_tokens) && month_tokens->valuedouble >= 0.0) {
+        target->month_tokens = (int64_t)month_tokens->valuedouble;
+        target->month_tokens_valid = true;
+    } else {
+        target->month_tokens = 0;
+        target->month_tokens_valid = false;
     }
     target->today_used_percent_valid =
         json_percent_value(today_used_percent, &quota_value);

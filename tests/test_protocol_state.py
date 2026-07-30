@@ -23,11 +23,15 @@ class ProtocolStateTests(unittest.TestCase):
                     "status": "RUNNING",
                     "project": "VibeStick",
                     "quota_5h_remaining": 66,
+                    "quota_5h_reset_minutes": 204,
                     "quota_7d_remaining": 96,
+                    "quota_7d_reset_minutes": 7250,
                     "quota_updated_at": "09:38",
                     "funds_balance": "9.20",
                     "today_spend": None,
                     "today_tokens": 5800000,
+                    "month_cost_usd": 12.75,
+                    "month_tokens": 123456789,
                     "today_used_percent": 16,
                     "running_tasks": 2,
                     "waiting_tasks": 3,
@@ -41,10 +45,14 @@ class ProtocolStateTests(unittest.TestCase):
         self.assertEqual(payload["provider"]["id"], "codex")
         self.assertEqual(payload["provider"]["status"], "RUNNING")
         self.assertEqual(payload["provider"]["quota_5h_remaining"], 66)
+        self.assertEqual(payload["provider"]["quota_5h_reset_minutes"], 204)
+        self.assertEqual(payload["provider"]["quota_7d_reset_minutes"], 7250)
         self.assertEqual(payload["codex"]["status"], "RUNNING")
         self.assertEqual(payload["codex"]["funds_balance"], "9.20")
         self.assertIsNone(payload["codex"]["today_spend"])
         self.assertEqual(payload["provider"]["today_tokens"], 5800000)
+        self.assertEqual(payload["provider"]["month_cost_usd"], 12.75)
+        self.assertEqual(payload["provider"]["month_tokens"], 123456789)
         self.assertEqual(payload["provider"]["today_used_percent"], 16)
         self.assertEqual(payload["provider"]["running_tasks"], 2)
         self.assertEqual(payload["provider"]["waiting_tasks"], 3)
