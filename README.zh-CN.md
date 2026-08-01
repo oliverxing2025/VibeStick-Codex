@@ -8,6 +8,7 @@
   </p>
   <p>
     <a href="#项目概览">项目概览</a> ·
+    <a href="#v020-更新与升级说明">v0.2.0</a> ·
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
@@ -19,11 +20,45 @@
     <img alt="硬件：M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="平台：macOS" src="https://img.shields.io/badge/platform-macOS-111111">
     <img alt="ESP-IDF：5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
+    <img alt="版本：0.2.0" src="https://img.shields.io/badge/version-0.2.0-F3A712">
     <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
 </div>
+
+## v0.2.0 更新与升级说明
+
+发布于2026年8月1日。固件下载和完整发布说明见
+[v0.2.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.2.0)。
+
+相对 v0.1.5，本版本主要更新如下：
+
+- **任务状态小人动画：**横屏在 Codex 工作时显示跑步小人，等待人工批准时
+  显示等待小人，任务完成时显示庆祝动画。
+- **WAIT 状态判断更可靠：**待处理的权限或批准请求优先于普通近期活动，设备会
+  正确进入 `WAITING`，不会继续误显示为 `RUNNING`。
+- **横屏布局重新整理：**时钟、电池、当月 Token、任务计数和额度颗粒矩阵均按
+  StickS3 紧凑屏幕重新调整尺寸与位置。
+- **Token 含义更清楚：**当月数值是输入 Token 加输出 Token，缓存上下文包含在
+  输入 Token 内；它表示模型总处理量，不是 OpenAI 订阅额度或实际账单。
+- **动画素材完整收录：**仓库新增经过检查的源图、设备预览和固件 Sprite，覆盖
+  `RUNNING`、`WAITING`、`DONE` 三种状态。
+- **版本号统一为 0.2.0：**固件、Bridge、协议示例、硬件文档、问题模板和发布
+  说明使用同一版本号。
+
+### 升级方式
+
+| 下载文件 | 写入地址 | 适用场景 | 保留内容 |
+| --- | ---: | --- | --- |
+| `VibeStick-Codex-v0.2.0-app.bin` | `0x320000` | 已确认身份和布局的 Codex + Hourglass 双固件设备，仅更新 Codex 槽位 | 不改动 Hourglass 槽、分区表、OTA 元数据和 NVS |
+| `VibeStick-Codex-v0.2.0-full-install.bin` | `0x0` | 全新独立安装，或明确要替换现有固件布局 | 会替换 bootloader、分区表、OTA 元数据和 `0x20000` 应用 |
+
+> [!WARNING]
+> 写入前必须核对实体设备身份、分区布局、镜像和地址。双固件设备更新 Codex 时
+> 只能把应用镜像写入 `0x320000`；完整镜像会替换多固件布局。公开发布固件不含
+> Wi-Fi、Bridge 或 API 私密配置，因此首次启动会保持离线，需要在本地加入私人
+> 配置后重新构建。
 
 ## 项目概览
 
