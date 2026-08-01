@@ -228,6 +228,8 @@ def observe_codex(project_root: Path) -> LocalCodexObservation:
         )
     if not codex_online:
         status = AgentStatus.OFFLINE
+    elif waiting_tasks > 0:
+        status = AgentStatus.APPROVAL
     elif (
         latest_alert
         and now - latest_alert[0] <= ALERT_ACTIVITY_WINDOW

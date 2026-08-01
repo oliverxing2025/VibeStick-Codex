@@ -1,6 +1,6 @@
 # Third-Party Audit
 
-This audit documents the v0.1.5 repository and public firmware package.
+This audit documents the v0.2.0 repository and public firmware package.
 
 | Project / file / dependency | Source | Current use | License status | Risk | Recommendation |
 | --- | --- | --- | --- | --- | --- |
@@ -28,4 +28,4 @@ This audit documents the v0.1.5 repository and public firmware package.
 
 This repository is derived from Gary Zhang's MIT-licensed VibeStick project. The original copyright and MIT permission notice are retained in `LICENSE` and the relationship is documented in `NOTICE`. The landscape dashboard acknowledges CodeBuddy as a visual and information-architecture reference; its implementation is project-authored ESP-IDF/LVGL code, and no CodeBuddy source code or artwork is redistributed here. Vendored third-party materials are limited to the Bosch BMI270 driver and the generated Chinese LVGL glyph subset derived from Noto Sans SC; their license notices remain with the repository. Other build-time firmware dependencies are resolved through the ESP-IDF component manager.
 
-The v0.1.5 public firmware package includes the project MIT license, Apache-2.0, LVGL MIT, Bosch BMI270, and Noto Sans SC OFL texts together with `NOTICE`. Re-run this check whenever the ESP-IDF or component lock versions change.
+The v0.2.0 public firmware package includes the project MIT license, Apache-2.0, LVGL MIT, Bosch BMI270, and Noto Sans SC OFL texts together with `NOTICE`. Re-run this check whenever the ESP-IDF or component lock versions change.

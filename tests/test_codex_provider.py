@@ -14,6 +14,7 @@ from vibe_stick.codex.local_observer import (
     _latest_quota_and_funds,
     _monthly_api_cost_usd,
     _monthly_token_total,
+    observe_codex,
     _quota_period_start,
     _quota_from_payload,
     _session_is_running,
@@ -481,6 +482,65 @@ class CodexProviderTests(unittest.TestCase):
         ]
 
         self.assertTrue(_session_is_waiting(events, now))
+
+    def test_pending_human_approval_becomes_primary_waiting_status(self) -> None:
+        now = datetime.now(timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "call_id": "call_pending",
+                    "name": "exec_command",
+                    "arguments": (
+                        '{"cmd":"open app","sandbox_permissions":'
+                        '"require_escalated","justification":"Allow?"}'
+                    ),
+                },
+            },
+            {
+                "timestamp": (now - timedelta(seconds=2)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "token_count"},
+            },
+        ]
+
+        with (
+            mock.patch(
+                "vibe_stick.codex.local_observer._session_files",
+                return_value=[Path("/tmp/pending-approval.jsonl")],
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._tail_json_events",
+                return_value=events,
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._codex_process_running",
+                return_value=True,
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._latest_archived_quota_and_funds",
+                return_value=(None, None),
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._daily_weekly_usage_samples",
+                return_value=[],
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._monthly_api_cost_usd",
+                return_value=None,
+            ),
+            mock.patch(
+                "vibe_stick.codex.local_observer._monthly_token_total",
+                return_value=None,
+            ),
+        ):
+            observation = observe_codex(Path("/tmp/project"))
+
+        self.assertEqual(observation.waiting_tasks, 1)
+        self.assertEqual(observation.running_tasks, 0)
+        self.assertEqual(observation.status, AgentStatus.APPROVAL)
 
     def test_tool_output_clears_escalated_waiting_count(self) -> None:
         now = datetime(2026, 7, 27, 1, 0, tzinfo=timezone.utc)

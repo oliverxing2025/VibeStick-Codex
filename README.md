@@ -31,7 +31,7 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
 
 | | Capability | What it does |
 | --- | --- | --- |
-| **01** | Live status | Shows Wi-Fi, time, battery, Codex state, and audible alerts. |
+| **01** | Live status | Shows Wi-Fi, time, battery, Codex state, animated status characters, and audible alerts. |
 | **02** | Quota at a glance | Tracks remaining quota, usage consumed, today's tokens, and reset timing. |
 | **03** | Push-to-talk | Records on button hold, transcribes on release, and places the text into Codex for review. |
 | **04** | Adaptive dashboard | Rotates automatically between a detailed portrait view and a compact landscape task view. |
@@ -64,8 +64,9 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
 | Screen | Display | Meaning |
 | --- | --- | --- |
 | **Landscape** | `RUNNING` / `WAITING` / `DONE` / `ERROR` / `OFFLINE` | Current Codex or bridge state. |
+| **Landscape** | Animated pixel character | Runs while Codex is working, waits when human approval is required, and celebrates when a task completes. |
 | **Landscape** | Battery icon + percentage | StickS3's locally measured battery level. |
-| **Landscape** | Top-center token value, such as `2.2B` | Tokens observed since the start of the current calendar month. `K`, `M`, and `B` mean thousand, million, and billion. |
+| **Landscape** | Top-center token value, such as `50.7M` | Input plus output tokens observed since the start of the current calendar month. Cached context is included within input tokens, so this processed-token total can grow much faster than newly submitted text or billable uncached input. `K`, `M`, and `B` mean thousand, million, and billion. |
 | **Landscape** | Dollar value, such as `$1.6K` | Estimated API-equivalent USD value of the observed monthly input, cached-input, and output tokens. It is an estimate based on the configured model-price table and [OpenAI API pricing](https://openai.com/api/pricing/), not an OpenAI bill or subscription charge. |
 | **Landscape** | `6D00H` / `0H51M` | Time remaining until the weekly and five-hour quota windows reset. |
 | **Landscape** | `RUN` / `WAIT` / `FIN` | Running tasks, tasks awaiting action, and tasks completed during the current local day. |
@@ -75,6 +76,10 @@ VibeStick-Codex turns the StickS3 into a focused physical window into Codex. It 
 | **Portrait** | `TOKEN` | Tokens accumulated in the current rolling seven-day quota cycle, not the calendar week or month. It restarts when that quota cycle resets. |
 
 Both orientations also show connection/status information and local time. Values that the bridge cannot currently determine are shown as unavailable rather than guessed.
+
+When a Codex task is waiting for a permission or approval response, `WAITING` takes priority over ordinary recent activity. The animated character and task counters therefore reflect the action the user needs to take, rather than continuing to show the task as merely running.
+
+The monthly Token value is a local activity counter, not an OpenAI subscription quota or invoice. Repeated cached context is counted as processed input, while the adjacent dollar value applies the configured cached-input price separately when estimating an API-equivalent cost.
 
 > [!NOTE]
 > These are product renders. Minor details may differ from the current on-device firmware.

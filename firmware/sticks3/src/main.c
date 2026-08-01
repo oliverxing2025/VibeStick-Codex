@@ -49,7 +49,7 @@
 #define LVGL_TICK_PERIOD_MS 10
 #define BATTERY_FILL_MAX_WIDTH 20
 #define ACTIVITY_COLUMNS 57
-#define ACTIVITY_ROWS 3
+#define ACTIVITY_ROWS 4
 #define ACTIVITY_SEGMENT_COLUMNS 28
 #define ACTIVITY_WEEK_START_COLUMN 29
 #define ACTIVITY_GAP_COLUMN (ACTIVITY_WEEK_START_COLUMN - 1)
@@ -225,6 +225,26 @@ static lv_obj_t *s_month_cost_label;
 static lv_obj_t *s_month_tokens_label;
 static lv_obj_t *s_days_left_label;
 static lv_obj_t *s_five_hour_reset_label;
+static lv_obj_t *s_status_person;
+static lv_obj_t *s_status_person_head;
+static lv_obj_t *s_status_person_torso;
+static lv_obj_t *s_status_person_left_arm;
+static lv_obj_t *s_status_person_right_arm;
+static lv_obj_t *s_status_person_left_leg;
+static lv_obj_t *s_status_person_right_leg;
+static lv_obj_t *s_status_person_canvas;
+static lv_timer_t *s_status_person_timer;
+typedef enum {
+    STATUS_PERSON_ANIMATION_NONE = 0,
+    STATUS_PERSON_ANIMATION_RUN,
+    STATUS_PERSON_ANIMATION_WAIT,
+    STATUS_PERSON_ANIMATION_DONE,
+} status_person_animation_t;
+#define LANDSCAPE_STATUS_RUNNING_COLOR 0xc6f24a
+#define LANDSCAPE_STATUS_WAIT_COLOR 0xffcf4b
+#define LANDSCAPE_STATUS_DONE_COLOR 0x65e58c
+static status_person_animation_t s_status_person_animation;
+static uint8_t s_status_person_frame;
 static lv_obj_t *s_date_group;
 static lv_obj_t *s_date_label;
 static lv_obj_t *s_date_separator;
@@ -335,6 +355,141 @@ static const lv_point_precise_t s_battery_bolt_points[] = {
     {2, 7},
     {6, 2},
     {4, 2},
+};
+
+static lv_point_precise_t s_status_person_torso_points[2];
+static lv_point_precise_t s_status_person_left_arm_points[2];
+static lv_point_precise_t s_status_person_right_arm_points[2];
+static lv_point_precise_t s_status_person_left_leg_points[2];
+static lv_point_precise_t s_status_person_right_leg_points[2];
+
+#define STATUS_PERSON_SPRITE_WIDTH 20
+#define STATUS_PERSON_SPRITE_HEIGHT 24
+#define STATUS_PERSON_MASK_WIDTH 18
+#define STATUS_PERSON_MASK_HEIGHT 22
+
+static uint32_t
+    s_status_person_canvas_buffer[
+        STATUS_PERSON_SPRITE_WIDTH * STATUS_PERSON_SPRITE_HEIGHT];
+
+static const uint32_t
+    s_status_person_run_masks[][STATUS_PERSON_MASK_HEIGHT] = {
+    {
+        0x00f00, 0x01f80, 0x01f80, 0x01f80, 0x00f00, 0x007c0,
+        0x007e0, 0x02ff0, 0x03fb0, 0x03fb0, 0x003e0, 0x007c0,
+        0x00fc0, 0x01ee4, 0x01cfe, 0x0387e, 0x03006, 0x0f000,
+        0x0f000, 0x00000, 0x00000, 0x00000,
+    },
+    {
+        0x00e00, 0x01f00, 0x01f00, 0x01f00, 0x01f00, 0x00780,
+        0x007e0, 0x007f0, 0x01bb0, 0x01ff0, 0x00fe0, 0x003c0,
+        0x007c0, 0x00fe0, 0x00f60, 0x003e0, 0x000e0, 0x00070,
+        0x000f0, 0x00000, 0x00000, 0x00000,
+    },
+    {
+        0x00700, 0x00f80, 0x00f80, 0x00f80, 0x00f00, 0x003e0,
+        0x007f0, 0x01fb0, 0x01ff0, 0x00ff0, 0x001c0, 0x003c0,
+        0x007a0, 0x007f0, 0x003f0, 0x000e0, 0x00060, 0x00070,
+        0x00070, 0x00000, 0x00000, 0x00000,
+    },
+    {
+        0x00f00, 0x01f80, 0x01f80, 0x01f80, 0x00f00, 0x007c0,
+        0x067f0, 0x07ff0, 0x03fb0, 0x01fb0, 0x003e0, 0x007c0,
+        0x03fe0, 0x07ef7, 0x1f07f, 0x1e03f, 0x0c010, 0x00000,
+        0x00000, 0x00000, 0x00000, 0x00000,
+    },
+    {
+        0x00f00, 0x01f00, 0x01f00, 0x01f00, 0x00f00, 0x007c0,
+        0x007e0, 0x007f0, 0x01fb0, 0x01ff0, 0x007c0, 0x001c0,
+        0x00388, 0x007fc, 0x007fc, 0x00644, 0x00700, 0x00700,
+        0x00f00, 0x00000, 0x00000, 0x00000,
+    },
+    {
+        0x00f00, 0x00f80, 0x00f80, 0x00f80, 0x00f00, 0x007c0,
+        0x003f0, 0x007f0, 0x01fb0, 0x01ff0, 0x00fe0, 0x001c0,
+        0x003c0, 0x007f0, 0x007f0, 0x003f0, 0x000e0, 0x00070,
+        0x00070, 0x00070, 0x00000, 0x00000,
+    },
+};
+
+static const uint32_t
+    s_status_person_wait_masks[][STATUS_PERSON_MASK_HEIGHT] = {
+    {
+        0x00f00, 0x00f80, 0x01f80, 0x01f80, 0x00f80, 0x00700,
+        0x03fc0, 0x07fe0, 0x07fe0, 0x07fe0, 0x00fe0, 0x00fe0,
+        0x00fe0, 0x01fe0, 0x01f80, 0x01f80, 0x01f80, 0x01d80,
+        0x01980, 0x039c0, 0x039e0, 0x00000,
+    },
+    {
+        0x00780, 0x00f80, 0x00fc0, 0x00fc0, 0x00780, 0x00700,
+        0x01fc0, 0x03fe0, 0x037e0, 0x03fe0, 0x01fe0, 0x007e0,
+        0x00fe0, 0x00f80, 0x00dc0, 0x01dc0, 0x01dc0, 0x01dc0,
+        0x01980, 0x039c0, 0x039c0, 0x00000,
+    },
+    {
+        0x00700, 0x00f80, 0x00f80, 0x00f80, 0x00f80, 0x00700,
+        0x03fc0, 0x07fe0, 0x07fe0, 0x07fe0, 0x03fe0, 0x00fe0,
+        0x00fe0, 0x01f80, 0x01dc0, 0x01de0, 0x01ce0, 0x019c0,
+        0x039c0, 0x039c0, 0x039e0, 0x00000,
+    },
+    {
+        0x00700, 0x00f80, 0x00f80, 0x00f80, 0x00f80, 0x00700,
+        0x03fc0, 0x07fe0, 0x07fe0, 0x07fe0, 0x00fe0, 0x00fe0,
+        0x00fe0, 0x01fe0, 0x01f80, 0x01f80, 0x01f80, 0x01d80,
+        0x01980, 0x039c0, 0x039e0, 0x00000,
+    },
+    {
+        0x00f00, 0x00f80, 0x01f80, 0x01f80, 0x00f80, 0x00700,
+        0x03fc0, 0x07fe0, 0x07fe0, 0x07fe0, 0x03fe0, 0x00fe0,
+        0x00fe0, 0x01f80, 0x01d80, 0x01dc0, 0x019c0, 0x039c0,
+        0x039c0, 0x038e0, 0x078e0, 0x00000,
+    },
+    {
+        0x00700, 0x00f80, 0x00f80, 0x00f80, 0x00f80, 0x00700,
+        0x01fc0, 0x07fe0, 0x07fe0, 0x07fe0, 0x00fe0, 0x00fe0,
+        0x00fe0, 0x01fe0, 0x01f80, 0x01f80, 0x01f80, 0x01d80,
+        0x01980, 0x039c0, 0x039e0, 0x00000,
+    },
+};
+
+static const uint32_t
+    s_status_person_done_masks[][STATUS_PERSON_MASK_HEIGHT] = {
+    {
+        0x00000, 0x00000, 0x00780, 0x00fc0, 0x00fc0, 0x00fc0,
+        0x00780, 0x00780, 0x00fc0, 0x01fe0, 0x03ff0, 0x03ff0,
+        0x037b0, 0x037b0, 0x037b0, 0x00fc0, 0x00fc0, 0x00fc0,
+        0x00cc0, 0x01cc0, 0x01ce0, 0x01ce0,
+    },
+    {
+        0x00000, 0x00000, 0x00000, 0x00700, 0x00f80, 0x10f84,
+        0x18f8c, 0x1cf9c, 0x0fff8, 0x07ff0, 0x03fe0, 0x00f80,
+        0x00f80, 0x00f80, 0x00f80, 0x00f80, 0x00f80, 0x00d80,
+        0x00d80, 0x01dc0, 0x018c0, 0x018e0,
+    },
+    {
+        0x00000, 0x00000, 0x00000, 0x08784, 0x0cfcc, 0x0efdc,
+        0x07ffc, 0x03ff8, 0x03ff0, 0x01fe0, 0x00fc0, 0x00780,
+        0x00780, 0x00780, 0x00780, 0x00780, 0x00780, 0x00fc0,
+        0x00fc0, 0x00cc0, 0x01ce0, 0x01ce0,
+    },
+    {
+        0x00000, 0x00000, 0x00000, 0x0438c, 0x067cc, 0x077dc,
+        0x07ff8, 0x01ff0, 0x01ff0, 0x00fe0, 0x007c0, 0x007c0,
+        0x007c0, 0x007c0, 0x007c0, 0x007c0, 0x00ee0, 0x00c60,
+        0x00c60, 0x00c60, 0x01c70, 0x01c70,
+    },
+    {
+        0x00000, 0x00000, 0x00000, 0x00780, 0x0cfcc, 0x0efdc,
+        0x0effc, 0x07ff8, 0x03ff0, 0x01fe0, 0x00fc0, 0x00780,
+        0x00780, 0x00780, 0x00780, 0x00780, 0x00fc0, 0x00fc0,
+        0x00dc0, 0x01cc0, 0x01ce0, 0x01ce0,
+    },
+    {
+        0x00000, 0x00000, 0x00780, 0x00fc0, 0x00fc0, 0x00fc0,
+        0x00780, 0x00780, 0x00fc0, 0x01fe0, 0x03ff0, 0x03ff0,
+        0x037b0, 0x037b0, 0x037b0, 0x00fc0, 0x00fc0, 0x00fc0,
+        0x00cc0, 0x01ce0, 0x01ce0, 0x01ce0,
+    },
 };
 
 static void render_state(void);
@@ -769,13 +924,13 @@ static void activity_timer_cb(lv_timer_t *timer)
         return;
     }
     static const uint32_t base_colors[ACTIVITY_ROWS] = {
-        0xc8ff43, 0x72d9ff, 0xbfaeff,
+        0xc8ff43, 0x72d9ff, 0xbfaeff, 0xf5c84c,
     };
     static const float minimum_brightness[ACTIVITY_ROWS] = {
-        0.72f, 0.74f, 0.74f,
+        0.72f, 0.74f, 0.74f, 0.76f,
     };
     static const float pulse_amplitude[ACTIVITY_ROWS] = {
-        0.28f, 0.26f, 0.26f,
+        0.28f, 0.26f, 0.26f, 0.24f,
     };
     const int64_t elapsed_us = esp_timer_get_time();
     const provider_display_state_t *display_state =
@@ -919,6 +1074,212 @@ static void format_landscape_weekday_text(const char *source, char *target,
              tolower((unsigned char)source[2]));
 }
 
+static lv_obj_t *make_status_person_limb(lv_obj_t *parent,
+                                         lv_point_precise_t points[2])
+{
+    lv_obj_t *line = lv_line_create(parent);
+    lv_line_set_points(line, points, 2);
+    lv_obj_set_style_line_width(line, 2, 0);
+    lv_obj_set_style_line_rounded(line, true, 0);
+    return line;
+}
+
+static void set_status_person_limb(lv_obj_t *line,
+                                   lv_point_precise_t points[2],
+                                   int x1, int y1, int x2, int y2)
+{
+    points[0].x = x1;
+    points[0].y = y1;
+    points[1].x = x2;
+    points[1].y = y2;
+    if (line) {
+        lv_line_set_points(line, points, 2);
+    }
+}
+
+static const uint32_t
+    (*status_person_animation_masks(size_t *frame_count))
+        [STATUS_PERSON_MASK_HEIGHT]
+{
+    switch (s_status_person_animation) {
+    case STATUS_PERSON_ANIMATION_RUN:
+        *frame_count = sizeof(s_status_person_run_masks) /
+                       sizeof(s_status_person_run_masks[0]);
+        return s_status_person_run_masks;
+    case STATUS_PERSON_ANIMATION_WAIT:
+        *frame_count = sizeof(s_status_person_wait_masks) /
+                       sizeof(s_status_person_wait_masks[0]);
+        return s_status_person_wait_masks;
+    case STATUS_PERSON_ANIMATION_DONE:
+        *frame_count = sizeof(s_status_person_done_masks) /
+                       sizeof(s_status_person_done_masks[0]);
+        return s_status_person_done_masks;
+    default:
+        *frame_count = 0;
+        return NULL;
+    }
+}
+
+static lv_color_t status_person_animation_color(void)
+{
+    switch (s_status_person_animation) {
+    case STATUS_PERSON_ANIMATION_WAIT:
+        return lv_color_hex(LANDSCAPE_STATUS_WAIT_COLOR);
+    case STATUS_PERSON_ANIMATION_DONE:
+        return lv_color_hex(LANDSCAPE_STATUS_DONE_COLOR);
+    case STATUS_PERSON_ANIMATION_RUN:
+    default:
+        return lv_color_hex(LANDSCAPE_STATUS_RUNNING_COLOR);
+    }
+}
+
+static bool status_person_mask_pixel(uint8_t frame_index, int x, int y)
+{
+    if (x < 0 || x >= STATUS_PERSON_MASK_WIDTH ||
+        y < 0 || y >= STATUS_PERSON_MASK_HEIGHT) {
+        return false;
+    }
+    size_t frame_count = 0;
+    const uint32_t (*masks)[STATUS_PERSON_MASK_HEIGHT] =
+        status_person_animation_masks(&frame_count);
+    if (!masks || frame_count == 0) {
+        return false;
+    }
+    return (masks[frame_index % frame_count][y] &
+            (1u << x)) != 0;
+}
+
+static void set_status_person_vector_hidden(bool hidden)
+{
+    lv_obj_t *parts[] = {
+        s_status_person_head,
+        s_status_person_torso,
+        s_status_person_left_arm,
+        s_status_person_right_arm,
+        s_status_person_left_leg,
+        s_status_person_right_leg,
+    };
+    for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
+        if (!parts[i]) {
+            continue;
+        }
+        if (hidden) {
+            lv_obj_add_flag(parts[i], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_remove_flag(parts[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+static void set_status_person_animation_frame(uint8_t frame_index)
+{
+    if (!s_status_person_canvas) {
+        return;
+    }
+    const lv_color_t outline = lv_color_hex(0x030405);
+    const lv_color_t body_color = status_person_animation_color();
+    int y_offset = 0;
+    if (s_status_person_animation == STATUS_PERSON_ANIMATION_RUN) {
+        y_offset = 2;
+    } else if (s_status_person_animation == STATUS_PERSON_ANIMATION_WAIT) {
+        y_offset = 1;
+    }
+    lv_canvas_fill_bg(
+        s_status_person_canvas, lv_color_black(), LV_OPA_TRANSP);
+    for (int canvas_y = 0;
+         canvas_y < STATUS_PERSON_SPRITE_HEIGHT; ++canvas_y) {
+        for (int canvas_x = 0;
+             canvas_x < STATUS_PERSON_SPRITE_WIDTH; ++canvas_x) {
+            const int mask_x = canvas_x - 1;
+            const int mask_y = canvas_y - 1 - y_offset;
+            if (status_person_mask_pixel(
+                    frame_index, mask_x, mask_y)) {
+                lv_canvas_set_px(
+                    s_status_person_canvas, canvas_x, canvas_y,
+                    body_color, LV_OPA_COVER);
+                continue;
+            }
+            bool touches_body = false;
+            for (int dy = -1; dy <= 1 && !touches_body; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (status_person_mask_pixel(
+                            frame_index, mask_x + dx, mask_y + dy)) {
+                        touches_body = true;
+                        break;
+                    }
+                }
+            }
+            if (touches_body) {
+                lv_canvas_set_px(
+                    s_status_person_canvas, canvas_x, canvas_y,
+                    outline, LV_OPA_COVER);
+            }
+        }
+    }
+    lv_obj_invalidate(s_status_person_canvas);
+}
+
+static void status_person_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (!s_landscape_active ||
+        s_status_person_animation == STATUS_PERSON_ANIMATION_NONE ||
+        !s_status_person) {
+        return;
+    }
+    size_t frame_count = 0;
+    (void)status_person_animation_masks(&frame_count);
+    if (frame_count == 0) {
+        return;
+    }
+    s_status_person_frame =
+        (uint8_t)((s_status_person_frame + 1) % frame_count);
+    set_status_person_animation_frame(s_status_person_frame);
+}
+
+static void set_landscape_status_person(const char *status)
+{
+    if (!s_status_person) {
+        return;
+    }
+
+    status_person_animation_t animation =
+        STATUS_PERSON_ANIMATION_NONE;
+    uint32_t period_ms = 120;
+    if (strcmp(status, "RUNNING") == 0) {
+        animation = STATUS_PERSON_ANIMATION_RUN;
+        period_ms = 120;
+    } else if (strcmp(status, "APPROVAL") == 0) {
+        animation = STATUS_PERSON_ANIMATION_WAIT;
+        period_ms = 300;
+    } else if (strcmp(status, "DONE") == 0) {
+        animation = STATUS_PERSON_ANIMATION_DONE;
+        period_ms = 150;
+    }
+
+    if (animation == STATUS_PERSON_ANIMATION_NONE) {
+        s_status_person_animation = STATUS_PERSON_ANIMATION_NONE;
+        if (s_status_person_timer) {
+            lv_timer_pause(s_status_person_timer);
+        }
+        lv_obj_add_flag(s_status_person, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    set_status_person_vector_hidden(true);
+    lv_obj_remove_flag(s_status_person_canvas, LV_OBJ_FLAG_HIDDEN);
+    if (s_status_person_animation != animation) {
+        s_status_person_animation = animation;
+        s_status_person_frame = 0;
+        set_status_person_animation_frame(s_status_person_frame);
+    }
+    if (s_status_person_timer) {
+        lv_timer_set_period(s_status_person_timer, period_ms);
+        lv_timer_resume(s_status_person_timer);
+    }
+    lv_obj_remove_flag(s_status_person, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void create_landscape_ui(lv_obj_t *screen)
 {
     s_activity_divider = NULL;
@@ -926,6 +1287,8 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_activity_7d_percent_label = NULL;
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x161a1e), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
     s_status_dot = make_plain_obj(screen, 7, 7, lv_color_hex(0xc6f24a),
                                   LV_OPA_COVER, LV_RADIUS_CIRCLE);
@@ -959,16 +1322,59 @@ static void create_landscape_ui(lv_obj_t *screen)
                                  lv_color_hex(0xd8dde3), 38,
                                  LV_TEXT_ALIGN_LEFT);
     lv_obj_set_style_text_letter_space(s_battery_label, -1, 0);
-    lv_obj_align(s_battery_label, LV_ALIGN_TOP_LEFT, 216, 3);
+    lv_obj_align(s_battery_label, LV_ALIGN_TOP_LEFT, 214, 5);
     s_month_tokens_label =
-        make_label(screen, "--", &lv_font_montserrat_10,
+        make_label(screen, "--", &lv_font_montserrat_12,
                    lv_color_hex(0xe7d86f), 60, LV_TEXT_ALIGN_CENTER);
     lv_obj_align(s_month_tokens_label, LV_ALIGN_TOP_LEFT,
-                 ACTIVITY_DIVIDER_X - 30, 3);
+                 ACTIVITY_DIVIDER_X - 30, 2);
 
-    s_time_label = make_label(screen, "--:--", &lv_font_montserrat_36,
-                              lv_color_hex(0xf2f4f7), 126, LV_TEXT_ALIGN_LEFT);
-    lv_obj_align(s_time_label, LV_ALIGN_TOP_LEFT, 10, 26);
+    s_time_label = make_label(screen, "--:--", &lv_font_montserrat_28,
+                              lv_color_hex(0xf2f4f7), 96, LV_TEXT_ALIGN_LEFT);
+    lv_obj_align(s_time_label, LV_ALIGN_TOP_LEFT, 16, 35);
+    s_status_person = make_plain_obj(
+        screen, STATUS_PERSON_SPRITE_WIDTH,
+        STATUS_PERSON_SPRITE_HEIGHT, lv_color_hex(0x000000),
+                                     LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(s_status_person, 104, 38);
+    lv_obj_remove_flag(s_status_person, LV_OBJ_FLAG_SCROLLABLE);
+    s_status_person_head =
+        make_plain_obj(s_status_person, 5, 5, lv_color_hex(0xc6f24a),
+                       LV_OPA_COVER, LV_RADIUS_CIRCLE);
+    lv_obj_set_pos(s_status_person_head, 6, 0);
+    set_status_person_limb(
+        NULL, s_status_person_torso_points, 8, 5, 8, 14);
+    s_status_person_torso =
+        make_status_person_limb(s_status_person, s_status_person_torso_points);
+    set_status_person_limb(
+        NULL, s_status_person_left_arm_points, 8, 8, 3, 11);
+    s_status_person_left_arm =
+        make_status_person_limb(s_status_person, s_status_person_left_arm_points);
+    set_status_person_limb(
+        NULL, s_status_person_right_arm_points, 8, 8, 14, 4);
+    s_status_person_right_arm =
+        make_status_person_limb(s_status_person, s_status_person_right_arm_points);
+    set_status_person_limb(
+        NULL, s_status_person_left_leg_points, 8, 14, 3, 21);
+    s_status_person_left_leg =
+        make_status_person_limb(s_status_person, s_status_person_left_leg_points);
+    set_status_person_limb(
+        NULL, s_status_person_right_leg_points, 8, 14, 15, 18);
+    s_status_person_right_leg =
+        make_status_person_limb(s_status_person, s_status_person_right_leg_points);
+    s_status_person_canvas = lv_canvas_create(s_status_person);
+    lv_canvas_set_buffer(
+        s_status_person_canvas, s_status_person_canvas_buffer,
+        STATUS_PERSON_SPRITE_WIDTH, STATUS_PERSON_SPRITE_HEIGHT,
+        LV_COLOR_FORMAT_ARGB8888);
+    lv_obj_set_pos(s_status_person_canvas, 0, 0);
+    lv_obj_add_flag(s_status_person_canvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_status_person, LV_OBJ_FLAG_HIDDEN);
+    s_status_person_animation = STATUS_PERSON_ANIMATION_NONE;
+    s_status_person_frame = 0;
+    s_status_person_timer =
+        lv_timer_create(status_person_timer_cb, 120, NULL);
+    lv_timer_pause(s_status_person_timer);
     s_month_cost_label = make_label(screen, "$--", &lv_font_montserrat_12,
                                     lv_color_hex(0xc9d1d9), 42,
                                     LV_TEXT_ALIGN_LEFT);
@@ -1027,7 +1433,7 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_activity_7d_percent_label =
         make_label(s_date_group, "--%", &lv_font_montserrat_12,
                    lv_color_hex(0x41c7ff), 40, LV_TEXT_ALIGN_CENTER);
-    lv_obj_set_y(s_activity_7d_percent_label, 19);
+    lv_obj_set_y(s_activity_7d_percent_label, 21);
     layout_landscape_date_row("--- --", "-------");
 
     for (int row = 0; row < ACTIVITY_ROWS; ++row) {
@@ -1084,6 +1490,11 @@ static void switch_display_orientation(bool landscape, bool landscape_reverse)
         lv_timer_delete(s_activity_timer);
         s_activity_timer = NULL;
     }
+    if (s_status_person_timer) {
+        lv_timer_delete(s_status_person_timer);
+        s_status_person_timer = NULL;
+    }
+    s_status_person_animation = STATUS_PERSON_ANIMATION_NONE;
     if (landscape) {
         ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, true));
         ESP_ERROR_CHECK(esp_lcd_panel_mirror(
@@ -1380,14 +1791,18 @@ static void render_state(void)
             landscape_status = "IDLE";
         }
         lv_label_set_text(s_status_label, landscape_status);
+        set_landscape_status_person(status_key);
         set_status_color(provider, status_key);
         lv_color_t status_color = lv_color_hex(0x9aa0aa);
         if (strcmp(status_key, "RUNNING") == 0) {
-            status_color = lv_color_hex(0xc6f24a);
+            status_color =
+                lv_color_hex(LANDSCAPE_STATUS_RUNNING_COLOR);
         } else if (strcmp(status_key, "DONE") == 0) {
-            status_color = lv_color_hex(0x65e58c);
+            status_color =
+                lv_color_hex(LANDSCAPE_STATUS_DONE_COLOR);
         } else if (strcmp(status_key, "APPROVAL") == 0) {
-            status_color = lv_color_hex(0xffcf4b);
+            status_color =
+                lv_color_hex(LANDSCAPE_STATUS_WAIT_COLOR);
         } else if (strcmp(status_key, "ERROR") == 0 ||
                    strcmp(status_key, "OFFLINE") == 0) {
             status_color = lv_color_hex(0xff5a5f);

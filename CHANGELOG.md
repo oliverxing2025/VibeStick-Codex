@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.0
+
+- Added animated pixel characters to the landscape dashboard for running, waiting for approval, and completed states.
+- Made pending human approval take priority over ordinary recent Codex activity, so the dashboard reliably enters `WAITING` when action is required.
+- Refined the landscape clock, battery, monthly-token label, quota matrix, and task-count layout for the compact StickS3 display.
+- Added the reviewed animation source sheets, device previews, and firmware-ready sprite sheets under `assets/animations/`.
+- Added regression coverage for pending approval detection and documented that the monthly Token value includes cached context within input tokens.
+
 ## v0.1.5
 
 - Added calendar-month token totals and an API-equivalent USD estimate to the landscape dashboard.
