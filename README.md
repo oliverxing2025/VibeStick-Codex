@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#overview">Overview</a> ·
-    <a href="#current-development-version">v0.3.0</a> ·
+    <a href="#current-release">v0.3.0</a> ·
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
@@ -27,9 +27,9 @@
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex portrait dashboard product render" width="480">
 </div>
 
-## Current development version
+## Current release
 
-Version `0.3.0` adds permanent device-side Wi-Fi provisioning. A device without
+Version `0.3.0` was released on August 12, 2026 and adds permanent device-side Wi-Fi provisioning. A device without
 a saved network opens setup automatically; holding both buttons for three
 seconds on the normal Codex screen restarts directly into setup. Failed changes
 restore the previous network.
@@ -38,46 +38,47 @@ The Bridge is now packaged as a self-contained macOS DMG and a single Windows
 Setup EXE, so ordinary users do not install Python or use a terminal. Windows
 Codex controls, automatic paste, and HUD remain preview support pending real
 Windows acceptance. Authenticated LAN discovery from `0.2.1` remains in place.
-The latest tagged release is still `v0.2.0`; development installers are CI
-artifacts until the `v0.3.0` release is published.
+Download the firmware and desktop installers from the
+[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0).
 
-## What's new in v0.2.0
+## What's new in v0.3.0
 
-Released on August 1, 2026. Download the firmware and view the complete notes
-on the [v0.2.0 release page](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.2.0).
+Released on August 12, 2026. Download the firmware, macOS Bridge DMG, Windows
+Bridge Setup EXE, checksums, and complete notes from the
+[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0).
 
-Compared with v0.1.5:
+Compared with v0.2.0:
 
-- **Animated task states:** the landscape dashboard now shows a running pixel
-  character while Codex works, a waiting character for human approval, and a
-  celebration when a task finishes.
-- **Reliable approval status:** a pending permission or approval now takes
-  priority over ordinary recent activity, so the device enters `WAITING`
-  instead of continuing to appear as `RUNNING`.
-- **Refined landscape layout:** the clock, battery, monthly Token value, task
-  counts, and quota particle matrix are resized and realigned for the compact
-  StickS3 display.
-- **Clearer Token meaning:** the README now explains that the monthly value is
-  input plus output tokens, including cached context within input tokens. It
-  is processed activity—not an OpenAI subscription quota or actual bill.
-- **Complete animation assets:** reviewed source sheets, device previews, and
-  firmware-ready sprites for `RUNNING`, `WAITING`, and `DONE` are included.
-- **Unified 0.2.0 versioning:** firmware, Bridge, protocol examples, hardware
-  documentation, issue templates, and release notes now use the same version.
+- **Permanent Wi-Fi setup:** first boot opens a password-protected setup hotspot;
+  users can choose a nearby 2.4 GHz network, and a failed change restores the
+  previous network. Hold both buttons for three seconds to reopen setup later.
+- **Secure Bridge pairing:** the device setup page accepts the locally generated
+  pairing token, while authenticated discovery follows computer address changes.
+- **Built-in voice settings:** the Bridge provides a loopback-only page for ASR
+  provider, model, language, and API key configuration without echoing saved keys.
+- **Packaged macOS Bridge:** the Apple Silicon DMG contains the Bridge, HUD,
+  per-user startup services, pairing page, uninstaller, and SHA-256 checksum.
+- **Windows preview package:** one per-user Setup EXE installs the Bridge, HUD,
+  autostart, Codex controls, and automatic paste without requiring Python.
+- **Cross-platform hardening:** computer paths, desktop controls, paste handling,
+  packaging tests, and CI now cover macOS and Windows behavior.
 
 ### Upgrade paths
 
 | Download | Flash offset | Use it when | What it preserves |
 | --- | ---: | --- | --- |
-| `VibeStick-Codex-v0.2.0-app.bin` | `0x320000` | Updating the Codex slot on an already verified Codex + Hourglass dual-app device | Keeps the Hourglass slot, partition table, OTA metadata, and NVS untouched |
-| `VibeStick-Codex-v0.2.0-full-install.bin` | `0x0` | Clean standalone installation, or intentionally replacing the existing firmware layout | Replaces the bootloader, partition table, OTA metadata, and application at `0x20000` |
+| `VibeStick-Codex-v0.3.0-app.bin` | `0x320000` | Updating the Codex slot on an already verified Codex + Hourglass dual-app device | Keeps the Hourglass slot, partition table, OTA metadata, and NVS untouched |
+| `VibeStick-Codex-v0.3.0-full-install.bin` | `0x0` | Clean standalone installation, or intentionally replacing the existing firmware layout | Replaces the bootloader, partition table, OTA metadata, and application at `0x20000` |
+| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` | — | Installing the self-contained Bridge on Apple Silicon macOS | Creates private configuration locally and preserves it during ordinary uninstall |
+| `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` | — | Installing the self-contained Bridge on 64-bit Windows | Installs per user and creates private configuration locally |
 
 > [!WARNING]
 > Verify the physical device identity, partition layout, image, and offset
 > before writing. On a dual-app device, update Codex only with the application
 > image at `0x320000`; writing the full image replaces the multi-firmware
-> layout. Public release binaries contain no Wi-Fi, Bridge, or API secrets and
-> therefore start offline until a private configuration is rebuilt locally.
+> layout. Public release binaries contain no Wi-Fi, Bridge token, API key,
+> device identifier, or computer address. A fresh device opens protected setup
+> so these private values can be supplied locally without rebuilding firmware.
 
 ## Overview
 

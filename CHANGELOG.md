@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.0 (development)
+## v0.3.0 — 2026-08-12
 
 - Added first-boot and in-app two-button Wi-Fi provisioning through a
   password-protected temporary access point and local setup page. The temporary

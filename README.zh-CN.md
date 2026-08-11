@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#项目概览">项目概览</a> ·
-    <a href="#当前开发版本">v0.3.0</a> ·
+    <a href="#当前正式版本">v0.3.0</a> ·
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
@@ -27,50 +27,53 @@
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
 </div>
 
-## 当前开发版本
+## 当前正式版本
 
-`0.3.0` 新增设备端永久 Wi-Fi 配网：没有已保存网络时自动进入配网，
+`0.3.0` 已于2026年8月12日发布，新增设备端永久 Wi-Fi 配网：没有已保存网络时自动进入配网，
 在正常 Codex 界面同时按住正面蓝键和侧键 3 秒，设备会自动重启并重新选择
 Wi-Fi；连接失败时自动恢复旧网络。
 现有 Bridge 内置仅限本机访问的语音服务设置页，不增加第二个电脑软件。
 Bridge 现已打包为自包含的 macOS DMG 和单个 Windows 安装 EXE，
 普通用户无需安装 Python 或使用命令行。Windows 的 Codex 控制、
 自动粘贴和 HUD 仍属预览，尚未完成实机验收。`0.2.1` 的身份
-验证局域网自动发现仍保留。最新正式 Release 仍为 `v0.2.0`；
-在 `v0.3.0` 发布前，开发版安装包作为 CI 产物提供。
+验证局域网自动发现仍保留。固件和电脑端安装包均可从
+[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0)下载。
 
-## v0.2.0 更新与升级说明
+## v0.3.0 更新与升级说明
 
-发布于2026年8月1日。固件下载和完整发布说明见
-[v0.2.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.2.0)。
+发布于2026年8月12日。固件、macOS Bridge DMG、Windows Bridge 安装 EXE、
+校验文件和完整发布说明见
+[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0)。
 
-相对 v0.1.5，本版本主要更新如下：
+相对 v0.2.0，本版本主要更新如下：
 
-- **任务状态小人动画：**横屏在 Codex 工作时显示跑步小人，等待人工批准时
-  显示等待小人，任务完成时显示庆祝动画。
-- **WAIT 状态判断更可靠：**待处理的权限或批准请求优先于普通近期活动，设备会
-  正确进入 `WAITING`，不会继续误显示为 `RUNNING`。
-- **横屏布局重新整理：**时钟、电池、当月 Token、任务计数和额度颗粒矩阵均按
-  StickS3 紧凑屏幕重新调整尺寸与位置。
-- **Token 含义更清楚：**当月数值是输入 Token 加输出 Token，缓存上下文包含在
-  输入 Token 内；它表示模型总处理量，不是 OpenAI 订阅额度或实际账单。
-- **动画素材完整收录：**仓库新增经过检查的源图、设备预览和固件 Sprite，覆盖
-  `RUNNING`、`WAITING`、`DONE` 三种状态。
-- **版本号统一为 0.2.0：**固件、Bridge、协议示例、硬件文档、问题模板和发布
-  说明使用同一版本号。
+- **永久 Wi-Fi 配网：**首次启动自动打开密码保护的临时热点，可从附近列表选择
+  2.4GHz Wi-Fi；换网失败会恢复旧网络，以后同时按住两键 3 秒即可重新配网。
+- **安全 Bridge 配对：**设备配网页面接收电脑本地生成的配对 Token，经过身份
+  验证的自动发现会跟随电脑局域网地址变化。
+- **语音设置并入 Bridge：**仅本机可访问的页面可以配置 ASR 服务商、模型、语言
+  和 API Key，已保存的 Key 不会回显。
+- **macOS 安装包：**Apple Silicon DMG 包含 Bridge、HUD、当前用户自启动服务、
+  配对页面、卸载工具和 SHA-256 校验文件。
+- **Windows 预览安装包：**单个当前用户安装 EXE 提供 Bridge、HUD、自启动、
+  Codex 控制和自动粘贴，普通用户无需安装 Python。
+- **跨平台完善：**电脑路径、桌面控制、粘贴、打包测试和 CI 已覆盖 macOS 与
+  Windows 行为。
 
 ### 升级方式
 
 | 下载文件 | 写入地址 | 适用场景 | 保留内容 |
 | --- | ---: | --- | --- |
-| `VibeStick-Codex-v0.2.0-app.bin` | `0x320000` | 已确认身份和布局的 Codex + Hourglass 双固件设备，仅更新 Codex 槽位 | 不改动 Hourglass 槽、分区表、OTA 元数据和 NVS |
-| `VibeStick-Codex-v0.2.0-full-install.bin` | `0x0` | 全新独立安装，或明确要替换现有固件布局 | 会替换 bootloader、分区表、OTA 元数据和 `0x20000` 应用 |
+| `VibeStick-Codex-v0.3.0-app.bin` | `0x320000` | 已确认身份和布局的 Codex + Hourglass 双固件设备，仅更新 Codex 槽位 | 不改动 Hourglass 槽、分区表、OTA 元数据和 NVS |
+| `VibeStick-Codex-v0.3.0-full-install.bin` | `0x0` | 全新独立安装，或明确要替换现有固件布局 | 会替换 bootloader、分区表、OTA 元数据和 `0x20000` 应用 |
+| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` | — | 在 Apple Silicon Mac 安装自包含 Bridge | 首次运行在本机生成私人配置，普通卸载会保留该配置 |
+| `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` | — | 在 64 位 Windows 安装自包含 Bridge | 仅为当前用户安装，并在本机生成私人配置 |
 
 > [!WARNING]
 > 写入前必须核对实体设备身份、分区布局、镜像和地址。双固件设备更新 Codex 时
-> 只能把应用镜像写入 `0x320000`；完整镜像会替换多固件布局。公开发布固件不含
-> Wi-Fi、Bridge 或 API 私密配置，因此首次启动会保持离线，需要在本地加入私人
-> 配置后重新构建。
+> 只能把应用镜像写入 `0x320000`；完整镜像会替换多固件布局。公开发布文件不含
+> Wi-Fi、Bridge Token、API Key、设备标识或电脑地址。新设备会打开密码保护的
+> 配网页面，可在本地填写这些私人信息，无需重新编译固件。
 
 ## 项目概览
 
