@@ -8,6 +8,7 @@
   </p>
   <p>
     <a href="#overview">Overview</a> ·
+    <a href="#whats-new-in-v020">v0.2.0</a> ·
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
@@ -19,11 +20,50 @@
     <img alt="Hardware: M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-111111">
     <img alt="ESP-IDF: 5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
+    <img alt="Version: 0.2.0" src="https://img.shields.io/badge/version-0.2.0-F3A712">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex portrait dashboard product render" width="480">
 </div>
+
+## What's new in v0.2.0
+
+Released on August 1, 2026. Download the firmware and view the complete notes
+on the [v0.2.0 release page](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.2.0).
+
+Compared with v0.1.5:
+
+- **Animated task states:** the landscape dashboard now shows a running pixel
+  character while Codex works, a waiting character for human approval, and a
+  celebration when a task finishes.
+- **Reliable approval status:** a pending permission or approval now takes
+  priority over ordinary recent activity, so the device enters `WAITING`
+  instead of continuing to appear as `RUNNING`.
+- **Refined landscape layout:** the clock, battery, monthly Token value, task
+  counts, and quota particle matrix are resized and realigned for the compact
+  StickS3 display.
+- **Clearer Token meaning:** the README now explains that the monthly value is
+  input plus output tokens, including cached context within input tokens. It
+  is processed activity—not an OpenAI subscription quota or actual bill.
+- **Complete animation assets:** reviewed source sheets, device previews, and
+  firmware-ready sprites for `RUNNING`, `WAITING`, and `DONE` are included.
+- **Unified 0.2.0 versioning:** firmware, Bridge, protocol examples, hardware
+  documentation, issue templates, and release notes now use the same version.
+
+### Upgrade paths
+
+| Download | Flash offset | Use it when | What it preserves |
+| --- | ---: | --- | --- |
+| `VibeStick-Codex-v0.2.0-app.bin` | `0x320000` | Updating the Codex slot on an already verified Codex + Hourglass dual-app device | Keeps the Hourglass slot, partition table, OTA metadata, and NVS untouched |
+| `VibeStick-Codex-v0.2.0-full-install.bin` | `0x0` | Clean standalone installation, or intentionally replacing the existing firmware layout | Replaces the bootloader, partition table, OTA metadata, and application at `0x20000` |
+
+> [!WARNING]
+> Verify the physical device identity, partition layout, image, and offset
+> before writing. On a dual-app device, update Codex only with the application
+> image at `0x320000`; writing the full image replaces the multi-firmware
+> layout. Public release binaries contain no Wi-Fi, Bridge, or API secrets and
+> therefore start offline until a private configuration is rebuilt locally.
 
 ## Overview
 
