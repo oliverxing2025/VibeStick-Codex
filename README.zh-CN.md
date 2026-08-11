@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#项目概览">项目概览</a> ·
-    <a href="#当前开发版本">v0.2.1</a> ·
+    <a href="#当前开发版本">v0.3.0</a> ·
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
@@ -18,9 +18,9 @@
   <p>
     <img alt="CI" src="https://github.com/oliverxing2025/VibeStick-Codex/actions/workflows/ci.yml/badge.svg">
     <img alt="硬件：M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
-    <img alt="平台：macOS" src="https://img.shields.io/badge/platform-macOS-111111">
+    <img alt="平台：macOS 与 Windows 预览" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20preview-111111">
     <img alt="ESP-IDF：5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="版本：0.2.1" src="https://img.shields.io/badge/version-0.2.1-F3A712">
+    <img alt="版本：0.3.0" src="https://img.shields.io/badge/version-0.3.0-F3A712">
     <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
@@ -29,10 +29,15 @@
 
 ## 当前开发版本
 
-`0.2.1` 新增了经过共享令牌验证的局域网自动发现。StickS3 连上 Wi-Fi 后会
-自动寻找已安装的 Bridge，连接失败时也会重新寻找，因此 Mac 通过 DHCP
-取得新 IP 时无需重新编译固件。固件中配置的地址仅作为备用。最新正式
-Release 仍为 `v0.2.0`。
+`0.3.0` 新增设备端永久 Wi-Fi 配网：没有已保存网络时自动进入配网，
+在正常 Codex 界面同时按住正面蓝键和侧键 3 秒，设备会自动重启并重新选择
+Wi-Fi；连接失败时自动恢复旧网络。
+现有 Bridge 内置仅限本机访问的语音服务设置页，不增加第二个电脑软件。
+Bridge 现已打包为自包含的 macOS DMG 和单个 Windows 安装 EXE，
+普通用户无需安装 Python 或使用命令行。Windows 的 Codex 控制、
+自动粘贴和 HUD 仍属预览，尚未完成实机验收。`0.2.1` 的身份
+验证局域网自动发现仍保留。最新正式 Release 仍为 `v0.2.0`；
+在 `v0.3.0` 发布前，开发版安装包作为 CI 产物提供。
 
 ## v0.2.0 更新与升级说明
 
@@ -130,22 +135,65 @@ VibeStick-Codex 把 StickS3 变成一个专注的 Codex 实体窗口：把经常
 
 | 平台 | 当前支持情况 |
 | --- | --- |
-| **macOS** | 完整支持当前安装流程，包括 bridge、HUD、Codex 桌面控制、自动粘贴和 Mac 麦克风兜底。 |
-| **Windows** | 暂未提供完整支持。可以按照 Espressif 官方方式构建和烧录固件，但 Windows 版 bridge 安装、HUD、Codex 桌面控制及自动粘贴尚未实现。 |
+| **macOS** | Apple Silicon DMG 内含自包含 Bridge 和 HUD，安装用户级登录启动项，在本机生成配对码并打开浏览器配置页。当前为临时签名，未使用 Developer ID 签名或公证。 |
+| **Windows** | 单个 Setup EXE 内含 Bridge 和 HUD，安装当前用户自启动，在本机生成配对码并打开浏览器配置页。CI 会构建和测试，但必须经真实 Windows 电脑验收后才能标为稳定支持。 |
 
 因此，下面涉及电脑端集成的步骤以 macOS 为准；纯固件构建和烧录步骤可参考 Espressif 的对应平台文档执行。
 
 ## 开始前的准备
 
-- [ ] M5Stack StickS3｜一根 USB-C 数据线｜一台 Mac
+- [ ] M5Stack StickS3｜一根 USB-C 数据线｜一台支持的 Mac 或 Windows 电脑
 - [ ] Wi-Fi（必须是 2.4GHz） 名称｜Wi-Fi密码｜语音识别模型 API Key
 - [ ] 语音转写 API Key。默认示例使用与 OpenAI 接口兼容的 [SiliconFlow](https://cloud.siliconflow.cn/)；也可以改用其他兼容服务的 `base_url` 和模型名称。
 
-<p align="center"><strong>初始化 → 配置 → 烧录 → 安装 bridge → 验证</strong></p>
+<p align="center"><strong>安装 Bridge → 烧录固件 → 设备配对 → 配置语音 → 验证</strong></p>
 
 ## 安装
 
-你可以手动执行，也可以交给 Codex。
+### 安装打包好的 Bridge
+
+M5Burner 只分发 StickS3 固件。Codex 状态、身份验证配对、语音转写、
+HUD 和自动粘贴需要 Bridge，只需从本项目
+[Releases 页](https://github.com/oliverxing2025/VibeStick-Codex/releases)下载一次。
+两个安装包都在用户电脑上现场生成新配对码，不内置 Wi-Fi 密码、
+API Key 或固定 Token。
+
+#### macOS
+
+1. 下载 `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` 和 SHA-256 文件。
+2. 校验后打开 DMG，把 `VibeStick Bridge.app` 拖到“应用程序”。
+3. 当前社区版未使用 Developer ID 签名和公证；首次运行请按住
+   Control 点击 App，选“打开”，再确认“打开”。
+4. App 会安装用户级开机启动服务，并自动打开
+   `http://127.0.0.1:8765/setup/voice`；配置 ASR 并复制 Bridge 配对码。
+5. macOS 请求权限时，给 **VibeStick Bridge** 开启“辅助功能”；
+   该权限只用于用户主动触发的 Codex 快捷键和粘贴。
+
+需要卸载时，重新打开 DMG，运行 `Uninstall VibeStick Bridge.command`。
+它会移除 App 和登录启动服务，但故意保留私有配置目录，只有用户手动删除
+后才会清掉 API Key 等本机设置。
+
+> [!WARNING]
+> 只从本仓库正式 Release 下载，并核对公布的 SHA-256。不要使用
+> 已经内置 API Key 或配对码的安装包。当前 macOS 安装包还没有在多种
+> Mac 机型和 macOS 版本上完成重复测试，欢迎提交 issue。
+
+#### Windows 预览版
+
+1. 下载 `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` 和 SHA-256 文件。
+2. 校验后运行安装器。它只安装到当前用户，添加 Bridge/HUD 自启动，
+   并打开同一个本机配对页面。
+3. Windows 防火墙弹窗时，只允许 VibeStick 访问专用网络。
+
+> [!WARNING]
+> Windows 安装器尚未代码签名，可能出现 SmartScreen。只有在确认下载来自
+> 本仓库正式 Release，且 SHA-256 完全一致时，才使用“更多信息 → 仍要运行”。
+> 在真实 Windows Codex 和实体 StickS3 上完成验收前，它仍属预览版。
+
+### 烧录并配对 StickS3
+
+下面的源码构建路线面向开发者。普通 M5Burner 用户烧录已发布固件后，
+直接从第 7 步继续。
 
 > 说明：标 👤 的步骤是需要人亲自动手的物理操作，例如插线、长按/短按电源键、在系统设置里授权。AI agent 请按顺序执行 shell 步骤，执行到 👤 步骤时暂停，让用户完成后再继续。
 
@@ -163,16 +211,18 @@ open -e firmware/sticks3/include/vibe_stick_secrets.h
 open -e .env
 ```
 
-在 `vibe_stick_secrets.h` 里填写 Wi-Fi 名称、Wi-Fi 密码、Mac bridge host。只要文件里还保留示例占位值，`scripts/setup.sh` 会尝试把 `VIBE_STICK_BRIDGE_HOST` 自动写成检测到的 en0 局域网 IP。
+在 `vibe_stick_secrets.h` 中保留 Bridge Token 和备用电脑地址。编译时填写的
+Wi-Fi 只作为开发者可选的首次迁移备用；正常配网和以后换网络都在设备上完成。
 
-在 `.env` 里填写 ASR key 和需要的 provider 设置。默认推荐 SiliconFlow：
+需要从源码运行的开发者，可先安装 macOS Bridge 和 HUD：
 
 ```sh
-VIBE_STICK_ASR_PROVIDER=openai-compatible
-VIBE_STICK_ASR_BASE_URL=https://api.siliconflow.cn/v1
-VIBE_STICK_ASR_API_KEY=your-siliconflow-key
-VIBE_STICK_ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+./scripts/install.sh
 ```
+
+源码安装器会打开 `http://127.0.0.1:8765/setup/voice`。在这里配置语音服务，
+并保留页面，稍后把其中的“设备配对 Token”复制到 StickS3 配网页面。
+该页面属于现有 Bridge，不是另一个软件。
 
 3. 👤 用 USB-C 数据线把 StickS3 插到 Mac。
 
@@ -207,15 +257,18 @@ ls /dev/cu.*
 
 等到终端出现 `Hash of data verified`。
 
-7. 👤 短按电源键唤醒屏幕。蓝灯应熄灭、屏幕亮起，此时应看到 VibeStick 首页。联网前可能显示离线。
+7. 👤 短按电源键唤醒屏幕。没有已保存网络时，屏幕会显示临时
+Wi-Fi 名称、8 位纯数字密码和 `192.168.4.1`。用手机连接该加密网络，打开
+地址后从附近 Wi-Fi 列表中选择与电脑一致的 2.4GHz Wi-Fi；隐藏网络也可手动
+输入。首次配对时，还要把电脑语音设置页里的 Bridge
+配对 Token 复制进设备页面；以后只换 Wi-Fi 时可以留空。在正常 Codex 界面
+同时按住两键 3 秒即可自动重启进入配网，连接失败会恢复上一个网络。
 
-8. 安装本机 macOS bridge 和 HUD：
+8. 如果尚未配置 ASR，回到已打开的语音设置页选择服务商、模型并填写
+API Key；已保存的 Key 不会回显。
 
-```sh
-./scripts/install.sh
-```
-
-9. 👤 当 macOS 弹出 `python3.14` 想用辅助功能控制这台电脑时，点击“打开系统设置”并勾选允许。粘贴转写结果需要这个权限。
+9. 👤 macOS 打包版用户给 **VibeStick Bridge** 开启“辅助功能”；
+源码安装用户给运行 VibeStick 的 Python runner 或终端开启。
 
 10. 检查安装状态：
 
@@ -258,18 +311,20 @@ ESP-IDF 没有加载到当前 shell，或者还没有安装。先 source ESP-IDF
 ### StickS3 连不上 Wi-Fi
 
 请使用 2.4GHz Wi-Fi。StickS3 / ESP32-S3 不支持 5GHz Wi-Fi。
+在正常 Codex 界面同时按住两键 3 秒，连接屏幕显示的加密配网热点，然后打开
+`http://192.168.4.1`。电脑与 StickS3 必须加入同一个可信局域网；电脑切换
+Wi-Fi 不会远程修改设备已经保存的 Wi-Fi。
 
 ### 录音能转写但没有粘贴
 
-给执行粘贴的 Python runner 开辅助功能权限。macOS 路径：系统设置 -> 隐私与安全性 -> 辅助功能，然后允许 `python3.14` 或运行 VibeStick 的终端 / 启动器。
+macOS 路径：系统设置 -> 隐私与安全性 -> 辅助功能，然后允许
+**VibeStick Bridge**。源码安装用户允许运行 VibeStick 的 Python runner 或
+终端。Windows 请确认 Bridge 正在运行，并且目标文本框已获得焦点。
 
 ### "No transcription adapter configured"
 
-在 `.env` 里配置 ASR，尤其是 `VIBE_STICK_ASR_PROVIDER`、`VIBE_STICK_ASR_BASE_URL`、`VIBE_STICK_ASR_API_KEY`，然后重新安装：
-
-```sh
-./scripts/install.sh
-```
+在 Bridge 电脑上打开 `http://127.0.0.1:8765/setup/voice`，保存服务商、
+模型和 API Key。开发者仍可手动配置等价的 `.env` 参数。
 
 ### 找不到 `.env`
 
@@ -287,7 +342,7 @@ open -e .env
 
 不要把真实 API key、本地 token、Wi-Fi 密码、本地日志、录音文件提交到 git。
 
-`.env` 里的空值通常表示“使用内置默认值”。`scripts/dev.sh` 会读取仓库根目录的 `.env`。`scripts/install.sh` 会把 `.env` 复制到 `~/Library/Application Support/VibeStick/.env`，LaunchAgent 运行时读取安装后的文件。
+`.env` 里的空值通常表示“使用内置默认值”。`scripts/dev.sh` 会读取仓库根目录的 `.env`。macOS 安装位置是 `~/Library/Application Support/VibeStick/.env`；Windows 预览版使用 `%LOCALAPPDATA%\VibeStick\.env`。
 
 ### 核心设置
 
@@ -346,9 +401,9 @@ VIBE_STICK_TRANSCRIBE_TIMEOUT_SECONDS=120
 
 - Bridge 不包含统计分析或遥测。
 - Bridge 可从局域网访问时，状态读取和控制接口都需要共享 Token。
-- 本地运行文件只允许当前 macOS 用户访问。
+- 本地运行文件只允许当前电脑用户访问。
 - 完整转写正文不会持久保存，录音默认在处理结束后删除。
-- StickS3 与 Mac 使用未加密的局域网 HTTP；只应使用可信私人 Wi-Fi，绝不能把 `8765` 端口暴露到互联网。
+- StickS3 与电脑使用未加密的局域网 HTTP；只应使用可信私人 Wi-Fi，绝不能把 `8765` 端口暴露到互联网。
 - 使用云端 ASR 时，录音会发送给所配置的服务商。
 
 完整说明见[隐私与数据流](docs/PRIVACY.zh-CN.md)。
@@ -364,6 +419,9 @@ VibeStick-Codex/
   firmware/sticks3/
   bridge/src/vibe_stick/
   app/macos/VibeStickHUD/
+  app/windows/VibeStickHUD.py
+  packaging/macos/
+  packaging/windows/
   scripts/
   tests/
 ```
@@ -371,9 +429,9 @@ VibeStick-Codex/
 ## 检查命令
 
 ```sh
-python3 -m compileall -q bridge/src tests
+python3 -m compileall -q bridge/src tests app/windows
 PYTHONPATH=bridge/src python3 -m unittest discover -s tests
-bash -n scripts/setup.sh scripts/doctor.sh scripts/install.sh
+bash -n scripts/setup.sh scripts/doctor.sh scripts/install.sh scripts/build-macos.sh packaging/macos/VibeStickBridge.sh
 ```
 
 固件构建仍需要 ESP-IDF：
@@ -386,7 +444,9 @@ idf.py build
 
 ## 当前限制
 
-- 这是整理后的原型，不是打包好的 Mac app 或 DMG。
+- macOS DMG 为临时签名，未使用 Developer ID 签名或公证。
+- 打包好的 App 还没有在多种 Mac 机型和 macOS 版本上完成重复测试。
+- Windows 支持在真实 Windows Codex 与 StickS3 验收前仍属于预览版。
 - 固件只面向 M5Stack StickS3。
 - 当月 Token 和美元数值来自本机可观察到的 Codex session 记录；记录不完整时统计也可能不完整，美元数值只是 API 等值估算，不代表账户实际账单。
 - ASR 可靠性取决于麦克风采集、上传 PCM 质量、provider 可达性和模型配置。

@@ -200,3 +200,8 @@ printf '%s\n' "VibeStick Bridge LaunchAgent installed:"
 printf '%s\n' "$PLIST_PATH"
 printf '%s\n' "VibeStick Bridge HUD LaunchAgent installed:"
 printf '%s\n' "$HUD_PLIST_PATH"
+printf '%s\n' "Voice service settings:"
+printf '%s\n' "http://127.0.0.1:$BRIDGE_PORT/setup/voice"
+if command -v open >/dev/null 2>&1; then
+  open "http://127.0.0.1:$BRIDGE_PORT/setup/voice" >/dev/null 2>&1 || true
+fi

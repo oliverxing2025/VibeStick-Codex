@@ -2,7 +2,7 @@
 
 ## Supported Device
 
-VibeStick v0.2.0 targets M5Stack StickS3.
+VibeStick v0.3.0 targets M5Stack StickS3.
 
 The project does not currently claim support for other devices because the UI layout, front button behavior, microphone path, speaker path, PMIC battery reads, and screen size are all written around StickS3.
 
@@ -27,7 +27,17 @@ git clone -b v5.5.1 --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf && ./install.sh esp32s3
 ```
 
-Create a local secrets header:
+On first boot without a saved network, the device starts a password-protected
+temporary access point with an eight-digit numeric password. Join the SSID shown
+on the StickS3, open `http://192.168.4.1`, and choose the same 2.4 GHz Wi-Fi as
+the Bridge computer from the nearby-network list, or enter a hidden SSID manually.
+To change networks later, hold the front and side buttons together for three
+seconds on the normal Codex screen. The device restarts into setup; a failed
+change restores the previous saved network. The boot-time chord remains a
+recovery fallback.
+
+Create a local secrets header for the authenticated Bridge token, fallback
+host, and optional initial Wi-Fi migration:
 
 ```sh
 cp firmware/sticks3/include/vibe_stick_secrets.example.h firmware/sticks3/include/vibe_stick_secrets.h
@@ -45,7 +55,7 @@ Edit:
 
 Do not commit `vibe_stick_secrets.h`.
 
-The Wi-Fi network must be 2.4 GHz. If the SSID is a combined 2.4/5 GHz network and the StickS3 cannot connect, create or select a dedicated 2.4 GHz SSID.
+The Wi-Fi network must be 2.4 GHz. If the SSID is a combined 2.4/5 GHz network and the StickS3 cannot connect, create or select a dedicated 2.4 GHz SSID. The compiled SSID/password are optional after NVS provisioning.
 
 ## Flashing
 

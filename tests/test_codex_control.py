@@ -73,6 +73,37 @@ class CodexDesktopControllerTests(unittest.TestCase):
         self.assertIn('open location ("codex://threads/" & approvalThreadId)', script)
         self.assertIn("key code 36", script)
 
+    @patch("vibe_stick.desktop.codex_control.platform.system", return_value="Windows")
+    @patch("vibe_stick.desktop.codex_control.subprocess.run")
+    def test_windows_send_uses_powershell_sendkeys(self, run, _system) -> None:
+        run.return_value.returncode = 0
+        run.return_value.stderr = ""
+        run.return_value.stdout = ""
+
+        result = CodexDesktopController().send()
+
+        self.assertTrue(result.success)
+        args = run.call_args.args[0]
+        self.assertEqual(args[:4], ["powershell.exe", "-NoProfile",
+                                   "-NonInteractive", "-Command"])
+        self.assertIn("System.Windows.Forms.SendKeys", args[4])
+        self.assertIn("{ENTER}", args[4])
+
+    @patch("vibe_stick.desktop.codex_control.platform.system", return_value="Windows")
+    @patch("vibe_stick.desktop.codex_control.subprocess.run")
+    def test_windows_approve_all_uses_only_valid_thread_ids(self, run, _system) -> None:
+        run.return_value.returncode = 0
+        run.return_value.stderr = ""
+        run.return_value.stdout = ""
+        thread_id = "019fa1bd-7d3b-7913-a86b-5220bf6aa96f"
+
+        result = CodexDesktopController().approve_all([thread_id, "unsafe';exit"])
+
+        self.assertTrue(result.success)
+        script = run.call_args.args[0][4]
+        self.assertIn(thread_id, script)
+        self.assertNotIn("unsafe", script)
+
 
 if __name__ == "__main__":
     unittest.main()

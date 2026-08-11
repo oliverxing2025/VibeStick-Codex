@@ -19,43 +19,51 @@ class ControlResult:
 
 
 class CodexDesktopController:
-    """Small, explicit control surface for the Codex desktop app on macOS."""
+    """Small, explicit control surface for the Codex desktop app."""
 
     bundle_id = "com.openai.codex"
 
     def open_or_focus(self) -> ControlResult:
-        if platform.system() != "Darwin":
-            return ControlResult(False, "Codex desktop control is only available on macOS")
-        return self._run(["open", "-b", self.bundle_id], "Codex opened")
+        system = platform.system()
+        if system == "Darwin":
+            return self._run(["open", "-b", self.bundle_id], "Codex opened")
+        if system == "Windows":
+            return self._run_windows(
+                "Start-Process 'codex://'; Start-Sleep -Milliseconds 250",
+                "Codex opened",
+            )
+        return ControlResult(False, "Codex desktop control is unavailable on this platform")
 
     def new_thread(self) -> ControlResult:
-        return self._shortcut('keystroke "n" using command down', "New Codex chat requested")
+        return self._shortcut('keystroke "n" using command down', "^n",
+                              "New Codex chat requested")
 
     def next_thread(self) -> ControlResult:
         return self._shortcut(
             'keystroke "]" using {command down, shift down}',
-            "Next Codex chat requested",
+            "^+{]}", "Next Codex chat requested",
         )
 
     def previous_thread(self) -> ControlResult:
         return self._shortcut(
             'keystroke "[" using {command down, shift down}',
-            "Previous Codex chat requested",
+            "^+{[}", "Previous Codex chat requested",
         )
 
     def send(self) -> ControlResult:
-        return self._shortcut("key code 36", "Codex message sent")
+        return self._shortcut("key code 36", "{ENTER}", "Codex message sent")
 
     def clear_input(self) -> ControlResult:
         return self._shortcut(
             'keystroke "a" using command down\n'
             "delay 0.05\n"
             "key code 51",
+            "^a{BACKSPACE}",
             "Codex input cleared",
         )
 
     def approve(self) -> ControlResult:
-        return self._shortcut("key code 36", "Codex approval accepted")
+        return self._shortcut("key code 36", "{ENTER}", "Codex approval accepted")
 
     def approve_all(self, thread_ids: list[str]) -> ControlResult:
         valid_thread_ids = list(
@@ -67,8 +75,24 @@ class CodexDesktopController:
         )
         if not valid_thread_ids:
             return ControlResult(False, "No valid Codex approval threads found")
+        if platform.system() == "Windows":
+            thread_list = ",".join(f"'{thread_id}'" for thread_id in valid_thread_ids)
+            script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                f"@({thread_list}) | ForEach-Object {{ "
+                "Start-Process ('codex://threads/' + $_); "
+                "Start-Sleep -Milliseconds 450; "
+                "[System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); "
+                "Start-Sleep -Milliseconds 180 }"
+            )
+            count = len(valid_thread_ids)
+            return self._run_windows(
+                script,
+                f"Accepted {count} Codex approval request{'s' if count != 1 else ''}",
+                timeout=max(5.0, count * 0.75 + 2.0),
+            )
         if platform.system() != "Darwin":
-            return ControlResult(False, "Codex desktop control is only available on macOS")
+            return ControlResult(False, "Codex desktop control is unavailable on this platform")
 
         apple_script_ids = ", ".join(f'"{thread_id}"' for thread_id in valid_thread_ids)
         script = (
@@ -88,11 +112,19 @@ class CodexDesktopController:
         )
 
     def decline(self) -> ControlResult:
-        return self._shortcut("key code 53", "Codex approval declined")
+        return self._shortcut("key code 53", "{ESC}", "Codex approval declined")
 
-    def _shortcut(self, key_action: str, success_message: str) -> ControlResult:
+    def _shortcut(self, key_action: str, windows_keys: str,
+                  success_message: str) -> ControlResult:
+        if platform.system() == "Windows":
+            script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "Start-Process 'codex://'; Start-Sleep -Milliseconds 250; "
+                f"[System.Windows.Forms.SendKeys]::SendWait('{windows_keys}')"
+            )
+            return self._run_windows(script, success_message)
         if platform.system() != "Darwin":
-            return ControlResult(False, "Codex desktop control is only available on macOS")
+            return ControlResult(False, "Codex desktop control is unavailable on this platform")
         system_events_actions = "\n".join(f"    {line}" for line in key_action.splitlines())
         script = (
             f'tell application id "{self.bundle_id}" to activate\n'
@@ -102,6 +134,15 @@ class CodexDesktopController:
             "end tell"
         )
         return self._run(["osascript", "-e", script], success_message)
+
+    @classmethod
+    def _run_windows(cls, script: str, success_message: str,
+                     *, timeout: float = 5.0) -> ControlResult:
+        return cls._run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            success_message,
+            timeout=timeout,
+        )
 
     @staticmethod
     def _run(

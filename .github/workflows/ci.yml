@@ -22,3 +22,67 @@ jobs:
 
       - name: Run unit tests
         run: PYTHONPATH=bridge/src python3 -m unittest discover -s tests
+
+  windows-preview:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: python -m compileall -q bridge/src tests app/windows
+
+      - name: Run unit tests
+        shell: pwsh
+        env:
+          PYTHONPATH: bridge/src
+        run: python -m unittest discover -s tests
+
+      - name: Install Windows packaging tool
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows preview package
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+
+      - name: Upload Windows preview package
+        uses: actions/upload-artifact@v4
+        with:
+          name: VibeStick-Codex-Windows-preview
+          path: |
+            dist/VibeStick-Bridge-Windows-*-Setup.exe
+            dist/VibeStick-Bridge-Windows-*-Setup.exe.sha256
+
+  macos-package:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install macOS packaging tool
+        run: python3 -m pip install --disable-pip-version-check pyinstaller
+
+      - name: Build macOS disk image
+        run: ./scripts/build-macos.sh
+
+      - name: Upload macOS disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: VibeStick-Codex-macOS
+          path: |
+            dist/VibeStick-Bridge-macOS-*.dmg
+            dist/VibeStick-Bridge-macOS-*.dmg.sha256

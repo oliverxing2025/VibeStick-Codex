@@ -4,5 +4,7 @@ from vibe_stick.server.app import main
 
 
 if __name__ == "__main__":
-    main()
-
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

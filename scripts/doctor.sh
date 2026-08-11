@@ -158,13 +158,13 @@ check_secrets() {
   bridge_host="$(secret_value VIBE_STICK_BRIDGE_HOST "$SECRETS_PATH")"
 
   if is_placeholder_wifi "$wifi_ssid"; then
-    fail "Wi-Fi SSID is empty or placeholder in firmware secrets."
+    pass "Wi-Fi SSID will be configured from the device setup page."
   else
     pass "Wi-Fi SSID is configured in firmware secrets."
   fi
 
   if is_placeholder_password "$wifi_password"; then
-    fail "Wi-Fi password is empty or placeholder in firmware secrets."
+    pass "Wi-Fi password will be configured from the device setup page."
   else
     pass "Wi-Fi password is configured in firmware secrets."
   fi

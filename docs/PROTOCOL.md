@@ -1,6 +1,6 @@
 # Protocol
 
-VibeStick v0.2.1 uses HTTP over Wi-Fi between the StickS3 firmware and the local Mac bridge.
+VibeStick v0.3.0 uses HTTP over Wi-Fi between the StickS3 firmware and the local computer bridge.
 
 Default bridge URL:
 
@@ -21,7 +21,7 @@ Firmware requests include:
 
 ```text
 X-Vibe-Stick-Firmware-Name: vibestick
-X-Vibe-Stick-Firmware-Version: 0.2.1
+X-Vibe-Stick-Firmware-Version: 0.3.0
 X-Vibe-Stick-Firmware-Transport: HTTP
 X-Vibe-Stick-Firmware-Build-Date: <compile date>
 ```
@@ -94,7 +94,7 @@ Returns the current bridge state:
     "message": ""
   },
   "bridge_name": "vibestick-bridge",
-  "bridge_version": "0.2.1"
+  "bridge_version": "0.3.0"
 }
 ```
 
@@ -110,7 +110,7 @@ Returns bridge health metadata:
 {
   "ok": true,
   "bridge_name": "vibestick-bridge",
-  "bridge_version": "0.2.1"
+  "bridge_version": "0.3.0"
 }
 ```
 

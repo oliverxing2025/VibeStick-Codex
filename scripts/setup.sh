@@ -177,6 +177,7 @@ else
 fi
 
 printf '\n%s\n' "Next steps:"
-printf '%s\n' "1. Edit firmware/sticks3/include/vibe_stick_secrets.h with Wi-Fi SSID, password, and Mac IP."
-printf '%s\n' "2. Optionally edit .env with ASR settings such as VIBE_STICK_ASR_PROVIDER and VIBE_STICK_ASR_API_KEY."
-printf '%s\n' "3. Run scripts/doctor.sh to check the local setup before building or flashing."
+printf '%s\n' "1. Keep the generated Bridge token and verify the fallback host in firmware secrets."
+printf '%s\n' "2. Configure Wi-Fi from the StickS3 setup page; compiled Wi-Fi values are optional migration fallbacks."
+printf '%s\n' "3. After Bridge installation, open http://127.0.0.1:8765/setup/voice for ASR settings."
+printf '%s\n' "4. Run scripts/doctor.sh to check the local setup before building or flashing."

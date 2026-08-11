@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleDisplayName</key>
+  <string>VibeStick Bridge</string>
+  <key>CFBundleExecutable</key>
+  <string>VibeStickBridge</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.vibestick.bridge.installer</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>VibeStick Bridge</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>__VIBE_STICK_VERSION__</string>
+  <key>CFBundleVersion</key>
+  <string>__VIBE_STICK_BUILD__</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>VibeStick uses Codex keyboard shortcuts to paste transcribed text and respond to actions you request from the device.</string>
+</dict>
+</plist>

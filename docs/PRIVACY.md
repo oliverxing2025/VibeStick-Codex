@@ -16,10 +16,11 @@ clear, new-chat, and approval actions. It does not upload Accessibility data.
 
 ## Data stored locally
 
-Runtime files are stored under:
+Runtime files are stored under the current user's private application-data directory:
 
 ```text
-~/Library/Application Support/VibeStick/
+macOS:   ~/Library/Application Support/VibeStick/
+Windows: %LOCALAPPDATA%\VibeStick\
 ```
 
 The directory is restricted to the current user (`0700`) and sensitive files
@@ -28,13 +29,13 @@ Recording files are deleted after processing by default. Set
 `VIBE_STICK_RETAIN_RECORDINGS=1` only when recordings are intentionally needed
 for debugging.
 
-`scripts/uninstall.sh` removes the LaunchAgents but deliberately leaves the
-configuration directory in place. Delete that directory manually when the
-credentials and cached state are no longer needed.
+The uninstall scripts remove autostart integration but deliberately leave the
+configuration directory in place. Delete it manually when the credentials and
+cached state are no longer needed.
 
 ## Local network
 
-The StickS3 and Mac communicate over HTTP on the local network. The bridge
+The StickS3 and Bridge computer communicate over HTTP on the local network. The bridge
 requires `VIBE_STICK_BRIDGE_TOKEN` whenever it binds outside loopback, and the
 token protects both state reads and mutating endpoints.
 
@@ -56,11 +57,14 @@ local recording-session metadata, including the local audio path.
 
 ## Credentials
 
-Wi-Fi credentials and the bridge token are compiled into the local firmware
-image. ASR credentials and the bridge token are stored in the local `.env`.
-These files are ignored by Git, but anyone with access to the Mac account,
-firmware image, or device flash may be able to recover them. Use scoped API
-keys and rotate credentials after losing a device or sharing a firmware image.
+Wi-Fi credentials are stored in device-local NVS by default; a developer may
+still compile an initial network into a private firmware as a migration
+fallback. ASR credentials and the bridge token stay in the computer's private
+`.env`. The voice settings page accepts loopback clients only, uses a CSRF
+token, and never echoes the saved API key. Anyone with access to the computer
+account, firmware image, or device flash may still be able to recover private
+data. Use scoped API keys and rotate credentials after losing a device or
+sharing a private firmware image.
 
 Never commit `.env`, `vibe_stick_secrets.h`, recordings, logs, or local Codex
 session files.

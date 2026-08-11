@@ -14,22 +14,23 @@ Bridge 还会使用 macOS 辅助功能权限执行聚焦、粘贴、发送、清
 
 ## 本地保存的数据
 
-运行数据保存在：
+运行数据保存在当前用户的私有应用数据目录：
 
 ```text
-~/Library/Application Support/VibeStick/
+macOS：  ~/Library/Application Support/VibeStick/
+Windows：%LOCALAPPDATA%\VibeStick\
 ```
 
 目录权限限制为当前用户可访问（`0700`），敏感文件写入权限为 `0600`。
 最新完整转写正文不会持久保存。录音默认在处理结束后删除；只有确实需要调试
 录音时才设置 `VIBE_STICK_RETAIN_RECORDINGS=1`。
 
-`scripts/uninstall.sh` 会移除 LaunchAgent，但会有意保留配置目录。确认不再需要
-凭据和缓存后，应手动删除该目录。
+卸载脚本会移除自启动项，但会有意保留配置目录。确认不再需要凭据和缓存后，
+应手动删除该目录。
 
 ## 局域网通信
 
-StickS3 与 Mac 通过局域网 HTTP 通信。Bridge 只要绑定到非本机回环地址，就
+StickS3 与运行 Bridge 的电脑通过局域网 HTTP 通信。Bridge 只要绑定到非本机回环地址，就
 必须设置 `VIBE_STICK_BRIDGE_TOKEN`；状态读取和修改接口都需要这个 Token。
 
 HTTP 不提供传输加密。共享 Token、摘要状态和 StickS3 麦克风音频可能以明文
@@ -47,9 +48,9 @@ HTTP 的 ASR 地址。
 
 ## 凭据
 
-Wi-Fi 凭据和 Bridge Token 会编译进本地固件镜像；ASR 凭据和 Bridge Token
-保存在本地 `.env`。虽然这些文件已被 Git 忽略，但能够访问 Mac 账户、固件
-镜像或设备 Flash 的人仍可能恢复凭据。建议使用权限受限的 API Key；设备丢失
-或分享过固件镜像后应轮换凭据。
+Wi-Fi 凭据默认保存在 StickS3 本地 NVS；开发者仍可把初始网络作为迁移
+备用编译进私有固件。ASR 凭据和 Bridge Token 保存在电脑本地 `.env`。
+语音设置页仅允许本机回环地址访问，使用 CSRF 令牌，不回显已保存的 API Key。
+能够访问电脑账户、私有固件镜像或设备 Flash 的人仍可能恢复凭据。
 
 不要提交 `.env`、`vibe_stick_secrets.h`、录音、日志或本地 Codex session 文件。

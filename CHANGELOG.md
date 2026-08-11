@@ -1,6 +1,26 @@
 # Changelog
 
-## v0.2.1 (development)
+## v0.3.0 (development)
+
+- Added first-boot and in-app two-button Wi-Fi provisioning through a
+  password-protected temporary access point and local setup page. The temporary
+  password is eight numeric digits, and nearby Wi-Fi networks are selectable.
+- Stored Wi-Fi credentials in device-local NVS, retained the previous network
+  during a change, and automatically restored it after repeated failures.
+- Increased the firmware HTTP transmit buffer so authenticated StickS3 PCM
+  uploads retain all audio metadata headers on every supported Bridge platform.
+- Added a loopback-only voice-service settings page to the existing Bridge;
+  API keys stay on the computer and are never echoed by the page.
+- Added Windows preview implementations for Bridge packaging and autostart,
+  Codex desktop shortcuts, automatic paste, configuration paths, and HUD, plus
+  a Windows CI build. Real Windows-device acceptance is still pending.
+- Added a self-contained Apple Silicon macOS DMG with an ad-hoc-signed Bridge
+  app, HUD, per-user LaunchAgents, local pairing-token generation, and SHA-256.
+- Replaced the Windows ZIP/PowerShell distribution with a single per-user
+  Inno Setup EXE and matching SHA-256 artifact; it remains unsigned preview
+  software until real Windows acceptance and signing are completed.
+
+## v0.2.1
 
 - Added authenticated LAN discovery so the StickS3 automatically follows Mac
   DHCP address changes at startup and reconnects after a bridge address change.

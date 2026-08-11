@@ -4,9 +4,11 @@ import argparse
 import atexit
 import hashlib
 import hmac
+import html
 import ipaddress
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -23,6 +25,7 @@ from vibe_stick.audio.recorder import RecordingController
 from vibe_stick.codex.local_observer import waiting_thread_ids
 from vibe_stick.codex.quota import QuotaSnapshot, load_quota, save_quota
 from vibe_stick.config.paths import (
+    APP_SUPPORT_DIR,
     QUOTA_PATH,
     RECORDING_PATH,
     STATE_PATH,
@@ -64,6 +67,15 @@ PLACEHOLDER_BRIDGE_TOKENS = {
     "changeme",
     "change-me",
 }
+VOICE_SETTINGS_KEYS = (
+    "VIBE_STICK_ASR_PROVIDER",
+    "VIBE_STICK_ASR_BASE_URL",
+    "VIBE_STICK_ASR_API_KEY",
+    "VIBE_STICK_ASR_MODEL",
+    "VIBE_STICK_ASR_LANGUAGE",
+)
+VOICE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9._:/-]+$")
+VOICE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._-]{8,512}$")
 
 
 def _local_date_key() -> str:
@@ -113,6 +125,7 @@ class BridgeStateStore:
     def __init__(self) -> None:
         ensure_app_support()
         self._lock = threading.RLock()
+        self.settings_csrf_token = uuid.uuid4().hex
         self._project_root = _resolve_project_root()
         self._manual_status_until = 0.0
         self._state = self._load_state()
@@ -412,6 +425,17 @@ def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path == "/setup/voice":
+                if not self._is_loopback_client():
+                    self._send_error(HTTPStatus.FORBIDDEN,
+                                     "Voice settings are available only on this computer")
+                    return
+                saved = _first(parse_qs(parsed.query), "saved") == "1"
+                self._send_html(_voice_settings_html(
+                    store.settings_csrf_token,
+                    message="设置已保存并立即生效。" if saved else "",
+                ))
+                return
             if parsed.path in _protected_paths() and not self._is_authorized():
                 self._send_error(HTTPStatus.UNAUTHORIZED, "Unauthorized")
                 return
@@ -431,6 +455,38 @@ def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path == "/setup/voice":
+                if not self._is_loopback_client():
+                    self._send_error(HTTPStatus.FORBIDDEN,
+                                     "Voice settings are available only on this computer")
+                    return
+                if self._content_length() > 8192:
+                    self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                                     "Voice settings request is too large")
+                    return
+                body = self._read_raw_body(self._content_length()).decode(
+                    "utf-8", errors="strict"
+                )
+                form = parse_qs(body, keep_blank_values=True)
+                if not hmac.compare_digest(
+                    _first(form, "csrf"), store.settings_csrf_token
+                ):
+                    self._send_error(HTTPStatus.FORBIDDEN, "Invalid setup request")
+                    return
+                try:
+                    _save_voice_settings(form)
+                except ValueError as error:
+                    self._send_html(
+                        _voice_settings_html(store.settings_csrf_token,
+                                             message=str(error), error=True),
+                        status=HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                self.send_response(HTTPStatus.SEE_OTHER)
+                self.send_header("Location", "/setup/voice?saved=1")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
             if parsed.path in _protected_paths() and not self._is_authorized():
                 self._send_error(HTTPStatus.UNAUTHORIZED, "Unauthorized")
                 return
@@ -509,6 +565,26 @@ def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
                 return True
             supplied = self.headers.get("X-Vibe-Stick-Token", "")
             return hmac.compare_digest(supplied, expected)
+
+        def _is_loopback_client(self) -> bool:
+            try:
+                return ipaddress.ip_address(self.client_address[0]).is_loopback
+            except ValueError:
+                return False
+
+        def _send_html(self, page: str,
+                       status: HTTPStatus = HTTPStatus.OK) -> None:
+            data = page.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy",
+                             "default-src 'none'; style-src 'unsafe-inline'; "
+                             "form-action 'self'; frame-ancestors 'none'")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -647,6 +723,139 @@ def _bridge_token() -> str:
     return token
 
 
+def _voice_settings_path() -> Path:
+    configured = os.environ.get("VIBE_STICK_CONFIG_PATH", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    installed = APP_SUPPORT_DIR / ".env"
+    if installed.exists() or Path.cwd() == APP_SUPPORT_DIR:
+        return installed
+    return Path.cwd() / ".env"
+
+
+def _read_env_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return values
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
+def _write_env_values(path: Path, updates: dict[str, str]) -> None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    replaced: set[str] = set()
+    output: list[str] = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key in updates and not line.lstrip().startswith("#"):
+            output.append(f"{key}={updates[key]}")
+            replaced.add(key)
+        else:
+            output.append(line)
+    for key in VOICE_SETTINGS_KEYS:
+        if key not in replaced:
+            output.append(f"{key}={updates[key]}")
+    temporary = path.with_suffix(f"{path.suffix}.{uuid.uuid4().hex}.tmp")
+    write_private_text(temporary, "\n".join(output).rstrip() + "\n")
+    os.replace(temporary, path)
+    restrict_private_file(path)
+
+
+def _save_voice_settings(form: dict[str, list[str]]) -> None:
+    profile = _first(form, "profile").strip()
+    base_url = _first(form, "base_url").strip().rstrip("/")
+    model = _first(form, "model").strip()
+    language = _first(form, "language").strip() or "zh"
+    api_key = _first(form, "api_key").strip()
+    if profile == "siliconflow":
+        provider = "openai-compatible"
+        base_url = base_url or "https://api.siliconflow.cn/v1"
+        model = model or "FunAudioLLM/SenseVoiceSmall"
+    elif profile == "groq":
+        provider = "groq"
+        base_url = base_url or "https://api.groq.com/openai/v1"
+        model = model or "whisper-large-v3-turbo"
+    elif profile == "custom":
+        provider = "openai-compatible"
+    else:
+        raise ValueError("请选择语音服务商。")
+    if not base_url.startswith("https://") or not VOICE_VALUE_PATTERN.fullmatch(base_url):
+        raise ValueError("API 地址必须是有效的 HTTPS 地址。")
+    if not model or not VOICE_VALUE_PATTERN.fullmatch(model):
+        raise ValueError("请填写有效的语音识别模型名称。")
+    if not VOICE_VALUE_PATTERN.fullmatch(language):
+        raise ValueError("语言代码无效。")
+    path = _voice_settings_path()
+    existing = _read_env_values(path)
+    if not api_key:
+        api_key = existing.get("VIBE_STICK_ASR_API_KEY", "")
+    if not VOICE_KEY_PATTERN.fullmatch(api_key):
+        raise ValueError("请填写有效的 API Key（至少 8 个字符）。")
+    updates = {
+        "VIBE_STICK_ASR_PROVIDER": provider,
+        "VIBE_STICK_ASR_BASE_URL": base_url,
+        "VIBE_STICK_ASR_API_KEY": api_key,
+        "VIBE_STICK_ASR_MODEL": model,
+        "VIBE_STICK_ASR_LANGUAGE": language,
+    }
+    _write_env_values(path, updates)
+    os.environ.update(updates)
+
+
+def _voice_settings_html(csrf_token: str, *, message: str = "",
+                         error: bool = False) -> str:
+    values = _read_env_values(_voice_settings_path())
+    base_url = values.get("VIBE_STICK_ASR_BASE_URL", "https://api.siliconflow.cn/v1")
+    model = values.get("VIBE_STICK_ASR_MODEL", "FunAudioLLM/SenseVoiceSmall")
+    language = values.get("VIBE_STICK_ASR_LANGUAGE", "zh") or "zh"
+    provider = values.get("VIBE_STICK_ASR_PROVIDER", "openai-compatible")
+    if provider == "groq":
+        profile = "groq"
+    elif "siliconflow.cn" in base_url:
+        profile = "siliconflow"
+    else:
+        profile = "custom"
+    key_configured = bool(values.get("VIBE_STICK_ASR_API_KEY", "").strip())
+    pairing_token = _bridge_token()
+    options = "".join(
+        f"<option value='{name}'{' selected' if profile == name else ''}>{label}</option>"
+        for name, label in (
+            ("siliconflow", "SiliconFlow（国内推荐）"),
+            ("groq", "Groq"),
+            ("custom", "其他 OpenAI 兼容服务"),
+        )
+    )
+    notice = ""
+    if message:
+        notice = f"<div class='notice {'error' if error else 'ok'}'>{html.escape(message)}</div>"
+    key_hint = "已配置；留空可保留原 Key" if key_configured else "将仅保存在这台电脑"
+    return f"""<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'><title>VibeStick 语音服务设置</title>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0b0d10;color:#f4f5f7;margin:0;padding:28px}}.card{{max-width:620px;margin:auto;background:#171a20;border:1px solid #2d333d;border-radius:20px;padding:26px}}h1{{font-size:25px;margin:0 0 8px}}p{{color:#aab0bb;line-height:1.55}}label{{display:block;margin-top:18px;font-weight:600}}input,select,button{{box-sizing:border-box;width:100%;margin-top:7px;padding:12px;border-radius:10px;border:1px solid #444b56;background:#0f1217;color:#fff;font:inherit}}button{{background:#f5c84c;color:#111;border:0;font-weight:750;cursor:pointer}}small{{display:block;color:#8e95a1;margin-top:6px}}.notice{{padding:11px;border-radius:10px;margin:16px 0}}.ok{{background:#143a2a;color:#9ee6bd}}.error{{background:#4a2020;color:#ffb3b3}}</style></head>
+<body><main class='card'><h1>VibeStick 语音服务</h1><p>这个页面只能在当前电脑打开。API Key 不会进入 S3 固件，也不会通过局域网传输。</p>{notice}
+<label>StickS3 Bridge 配对码</label><input value='{html.escape(pairing_token)}' readonly><small>首次配网时把这个配对码填入 StickS3 网页；它不是语音 API Key。</small>
+<form method='post' action='/setup/voice'><input type='hidden' name='csrf' value='{html.escape(csrf_token)}'>
+<label>语音服务商</label><select name='profile'>{options}</select>
+<label>API 地址</label><input name='base_url' value='{html.escape(base_url)}' required>
+<label>识别模型</label><input name='model' value='{html.escape(model)}' required>
+<label>语言</label><input name='language' value='{html.escape(language)}' required>
+<label>API Key</label><input name='api_key' type='password' autocomplete='new-password' placeholder='{key_hint}'><small>{key_hint}</small>
+<button type='submit'>保存并立即启用</button></form></main></body></html>"""
+
+
 def _enforce_bind_security(host: str) -> None:
     if _host_requires_token(host) and not _bridge_token():
         raise SystemExit(
@@ -781,6 +990,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _load_local_environment() -> None:
+    path = APP_SUPPORT_DIR / ".env"
+    for key, value in _read_env_values(path).items():
+        os.environ.setdefault(key, value)
+
+
 def main(argv: list[str] | None = None) -> None:
+    _load_local_environment()
     args = build_parser().parse_args(argv)
     run_server(args.host, args.port)

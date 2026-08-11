@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#overview">Overview</a> ·
-    <a href="#current-development-version">v0.2.1</a> ·
+    <a href="#current-development-version">v0.3.0</a> ·
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
@@ -18,9 +18,9 @@
   <p>
     <img alt="CI" src="https://github.com/oliverxing2025/VibeStick-Codex/actions/workflows/ci.yml/badge.svg">
     <img alt="Hardware: M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
-    <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-111111">
+    <img alt="Platform: macOS and Windows preview" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20preview-111111">
     <img alt="ESP-IDF: 5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="Version: 0.2.1" src="https://img.shields.io/badge/version-0.2.1-F3A712">
+    <img alt="Version: 0.3.0" src="https://img.shields.io/badge/version-0.3.0-F3A712">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
@@ -29,11 +29,17 @@
 
 ## Current development version
 
-Version `0.2.1` adds authenticated LAN discovery. The StickS3 now discovers the
-installed Bridge after joining Wi-Fi and discovers it again after a connection
-failure, so ordinary Mac DHCP address changes no longer require rebuilding the
-firmware. The configured host remains a fallback. The latest tagged release is
-still `v0.2.0`.
+Version `0.3.0` adds permanent device-side Wi-Fi provisioning. A device without
+a saved network opens setup automatically; holding both buttons for three
+seconds on the normal Codex screen restarts directly into setup. Failed changes
+restore the previous network.
+The existing Bridge now includes a loopback-only voice-service settings page.
+The Bridge is now packaged as a self-contained macOS DMG and a single Windows
+Setup EXE, so ordinary users do not install Python or use a terminal. Windows
+Codex controls, automatic paste, and HUD remain preview support pending real
+Windows acceptance. Authenticated LAN discovery from `0.2.1` remains in place.
+The latest tagged release is still `v0.2.0`; development installers are CI
+artifacts until the `v0.3.0` release is published.
 
 ## What's new in v0.2.0
 
@@ -136,25 +142,72 @@ The monthly Token value is a local activity counter, not an OpenAI subscription 
 
 | Platform | Current support |
 | --- | --- |
-| **macOS** | Fully supports the documented setup, including the bridge, HUD, Codex desktop control, automatic paste, and Mac microphone fallback. |
-| **Windows** | End-to-end support is not available yet. The firmware can be built and flashed using Espressif's Windows toolchain, but a Windows bridge installer, HUD, Codex desktop control, and automatic paste integration have not been implemented. |
+| **macOS** | The Apple Silicon DMG contains a self-contained Bridge and HUD, installs login LaunchAgents, generates the pairing token locally, and opens browser configuration. The current build is ad-hoc signed, not Developer ID signed or notarized. |
+| **Windows** | The single Setup EXE contains the Bridge and HUD, installs per-user autostart, generates the pairing token locally, and opens browser configuration. CI builds and tests it, but real Windows device/app acceptance is still required before stable support. |
 
-The computer-integration steps below therefore target macOS. For firmware-only building and flashing on another platform, follow Espressif's instructions for that platform.
+The primary verified flow below remains macOS. Windows preview installation is
+documented separately and must not be treated as real-device verified.
 
 ## Before you start
 
 - [ ] M5Stack StickS3 and a USB-C data cable.
-- [ ] A Mac on the same network as the StickS3.
+- [ ] A supported Mac or Windows PC on the same private network as the StickS3.
 - [ ] Wi-Fi name and password. The Wi-Fi must be 2.4 GHz; StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
 - [ ] An ASR API key for speech transcription. The default example uses the OpenAI-compatible [SiliconFlow](https://cloud.siliconflow.cn/) API, or you can use another compatible provider's `base_url` and model name.
 
 Building the firmware needs ESP-IDF v5.5.x — a one-time toolchain install (~1 GB, a few minutes). The install steps below set it up for you; no need to pre-install. Reference: Espressif's [ESP-IDF v5.5.1 ESP32-S3 guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/get-started/index.html).
 
-<p align="center"><strong>Setup → Configure → Flash → Install bridge → Verify</strong></p>
+<p align="center"><strong>Install Bridge → Flash firmware → Pair device → Configure voice → Verify</strong></p>
 
 ## Install
 
-You can do this manually or hand the command steps to Codex.
+### Install the packaged Bridge
+
+M5Burner distributes the StickS3 firmware only. The Bridge is required for
+Codex status, authenticated pairing, speech transcription, HUD, and automatic
+paste, and is downloaded once from this repository's
+[Releases page](https://github.com/oliverxing2025/VibeStick-Codex/releases).
+Both installers generate a fresh pairing token on the user's computer; no
+Wi-Fi password, API key, or fixed token is embedded in either package.
+
+#### macOS
+
+1. Download `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` and its SHA-256 file.
+2. Verify the checksum, open the DMG, and drag `VibeStick Bridge.app` to Applications.
+3. Because this community build is not Developer ID signed or notarized,
+   Control-click the app, choose **Open**, then confirm **Open** on first launch.
+4. The app installs per-user login services and opens
+   `http://127.0.0.1:8765/setup/voice`. Configure ASR and copy the Bridge pairing code.
+5. Grant Accessibility access to **VibeStick Bridge** when macOS requests it;
+   this is required only for the explicit Codex shortcuts and paste actions.
+
+To uninstall, reopen the DMG and run `Uninstall VibeStick Bridge.command`.
+It removes the app and login services but deliberately preserves the private
+configuration directory until the user deletes it manually.
+
+> [!WARNING]
+> Download installers only from this repository's official Release, verify the
+> published SHA-256 checksum, and never use a package that already contains an
+> API key or pairing code. The current macOS package has not completed repeated
+> testing across multiple Mac models and macOS versions; please report issues.
+
+#### Windows preview
+
+1. Download `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` and its SHA-256 file.
+2. Verify the checksum and run the installer. It installs only for the current
+   user, adds Bridge/HUD autostart, and opens the same local pairing page.
+3. If Windows Firewall prompts, allow VibeStick only on private networks.
+
+> [!WARNING]
+> The Windows installer is not code-signed and Windows may show SmartScreen.
+> Use **More info → Run anyway** only after confirming the official download
+> source and checksum. Windows remains preview-only until it is accepted on a
+> real Windows Codex installation with a physical StickS3.
+
+### Flash and pair the StickS3
+
+The following source-build route is for developers. Ordinary M5Burner users can
+burn the published firmware and continue at step 7.
 
 > Legend: steps marked 👤 are PHYSICAL steps that need a human to act directly, such as plugging in the cable, long-pressing or short-pressing the power button, and granting macOS permissions in System Settings. AI agents should run the shell steps in order, then pause at each 👤 step and ask the user to complete it before continuing.
 
@@ -172,16 +225,20 @@ open -e firmware/sticks3/include/vibe_stick_secrets.h
 open -e .env
 ```
 
-In `vibe_stick_secrets.h`, set Wi-Fi SSID, Wi-Fi password, and the Mac bridge host. `scripts/setup.sh` tries to auto-fill `VIBE_STICK_BRIDGE_HOST` with the detected en0 LAN IP when the file still has the example placeholder.
+Keep the Bridge token and fallback computer host in `vibe_stick_secrets.h`.
+Compiled Wi-Fi values are now only an optional first-run migration fallback;
+normal Wi-Fi setup and later network changes happen on the device.
 
-In `.env`, set the ASR key and any provider choices. The default ASR example is SiliconFlow:
+Developers who intentionally run from source can install the macOS Bridge and
+HUD before pairing the device:
 
 ```sh
-VIBE_STICK_ASR_PROVIDER=openai-compatible
-VIBE_STICK_ASR_BASE_URL=https://api.siliconflow.cn/v1
-VIBE_STICK_ASR_API_KEY=your-siliconflow-key
-VIBE_STICK_ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+./scripts/install.sh
 ```
+
+The source installer opens `http://127.0.0.1:8765/setup/voice`. Configure the speech
+provider there and keep the page open so its device pairing token can be copied
+into the StickS3 setup page. This is part of the Bridge, not another app.
 
 3. 👤 Plug the StickS3 into the Mac with the USB-C data cable.
 
@@ -216,15 +273,20 @@ ls /dev/cu.*
 
 Wait for `Hash of data verified`.
 
-7. 👤 Short-press the power button to wake the screen. The blue LED should turn off, the screen should turn on, and you should see the VibeStick home screen. Before networking is ready, it may show offline.
+7. 👤 Short-press the power button to wake the screen. With no saved network,
+the device shows a temporary Wi-Fi SSID, eight-digit password, and `192.168.4.1`.
+Connect a phone to that protected network, open the address, and choose the same
+2.4 GHz Wi-Fi as the computer from the nearby-network list, or enter a hidden
+network manually. On first pairing, copy the Bridge pairing token from the
+computer's voice settings page into the device page. To change only Wi-Fi later,
+the token can remain blank. On the normal Codex screen, hold both device buttons
+for three seconds to restart into setup; a failed change restores the previous network.
 
-8. Install the local macOS bridge and HUD:
+8. Return to the already-open local voice settings page if ASR still needs to
+be configured. The saved API key is never echoed back to the page.
 
-```sh
-./scripts/install.sh
-```
-
-9. 👤 When macOS prompts that `python3.14` wants Accessibility control, click "Open System Settings" and enable it. This permission is needed for paste injection.
+9. 👤 Packaged macOS users grant Accessibility to **VibeStick Bridge**.
+Source-install users grant it to the Python runner or terminal that runs VibeStick.
 
 10. Check the setup:
 
@@ -267,18 +329,23 @@ Unplug and replug the USB-C data cable. Put the StickS3 into download mode again
 ### StickS3 cannot join Wi-Fi
 
 Use a 2.4 GHz Wi-Fi network. StickS3 / ESP32-S3 does not support 5 GHz Wi-Fi.
+On the normal Codex screen, hold both buttons for three seconds, join the protected setup
+SSID shown on screen, then open `http://192.168.4.1`. The computer and StickS3
+must join the same private LAN; changing the computer's Wi-Fi does not remotely
+change the device's saved Wi-Fi.
 
 ### Recording transcribes but does not paste
 
-Grant Accessibility permission to the Python runner that performs paste injection. On macOS, open System Settings -> Privacy & Security -> Accessibility, then enable `python3.14` or the terminal / launcher that runs VibeStick.
+On macOS, open System Settings -> Privacy & Security -> Accessibility and enable
+**VibeStick Bridge**. Source-install users enable the Python runner or terminal
+that runs VibeStick. On Windows, confirm that the Bridge is running and that the
+target text box is focused.
 
 ### "No transcription adapter configured"
 
-Configure ASR in `.env`, especially `VIBE_STICK_ASR_PROVIDER`, `VIBE_STICK_ASR_BASE_URL`, and `VIBE_STICK_ASR_API_KEY`, then run:
-
-```sh
-./scripts/install.sh
-```
+Open `http://127.0.0.1:8765/setup/voice` on the Bridge computer and save the
+provider, model, and API key. Developers may still configure the equivalent
+`.env` values manually.
 
 ### Cannot find `.env`
 
@@ -296,7 +363,7 @@ The ASR provider is usually unreachable from your current network. Configure a r
 
 Do not commit real API keys, local tokens, Wi-Fi credentials, local logs, or generated recording files.
 
-Empty values in `.env` generally mean "use the built-in default". `scripts/dev.sh` loads `.env` from the repository root. `scripts/install.sh` copies `.env` to `~/Library/Application Support/VibeStick/.env`, and the LaunchAgent runner loads that installed file.
+Empty values in `.env` generally mean "use the built-in default". `scripts/dev.sh` loads `.env` from the repository root. On macOS, `scripts/install.sh` copies it to `~/Library/Application Support/VibeStick/.env`; the Windows preview uses `%LOCALAPPDATA%\VibeStick\.env`.
 
 ### Core settings
 
@@ -355,9 +422,9 @@ The command receives the recording session JSON on stdin and should print the fi
 
 - The bridge has no analytics or telemetry.
 - State reads and control endpoints require the shared bridge token when the bridge is available on the LAN.
-- Local runtime files are restricted to the current macOS user.
+- Local runtime files are restricted to the current computer user.
 - Complete transcripts are not persisted, and recordings are deleted after processing by default.
-- StickS3-to-Mac traffic uses local HTTP and is not encrypted. Use only trusted private Wi-Fi and never expose port `8765` to the internet.
+- StickS3-to-computer traffic uses local HTTP and is not encrypted. Use only trusted private Wi-Fi and never expose port `8765` to the internet.
 - Cloud ASR sends recording audio to the configured provider.
 
 Read the complete [privacy and data-flow guide](docs/PRIVACY.md).
@@ -373,6 +440,9 @@ VibeStick-Codex/
   firmware/sticks3/
   bridge/src/vibe_stick/
   app/macos/VibeStickHUD/
+  app/windows/VibeStickHUD.py
+  packaging/macos/
+  packaging/windows/
   scripts/
   tests/
 ```
@@ -380,9 +450,9 @@ VibeStick-Codex/
 ## Checks
 
 ```sh
-python3 -m compileall -q bridge/src tests
+python3 -m compileall -q bridge/src tests app/windows
 PYTHONPATH=bridge/src python3 -m unittest discover -s tests
-bash -n scripts/setup.sh scripts/doctor.sh scripts/install.sh
+bash -n scripts/setup.sh scripts/doctor.sh scripts/install.sh scripts/build-macos.sh packaging/macos/VibeStickBridge.sh
 ```
 
 Firmware builds still require ESP-IDF:
@@ -395,7 +465,9 @@ idf.py build
 
 ## Current limits
 
-- This is a cleaned prototype, not a packaged Mac app or DMG.
+- The macOS DMG is ad-hoc signed and is not Developer ID signed or notarized.
+- The packaged app has not completed repeated testing across multiple Mac models and macOS versions.
+- Windows support remains preview-only until accepted on a real Windows Codex installation and StickS3.
 - The firmware targets M5Stack StickS3 only.
 - The monthly token and USD figures are derived from locally observed Codex session records. They may be incomplete if records are unavailable, and the USD figure is an API-equivalent estimate rather than actual account billing.
 - ASR reliability depends on microphone capture, uploaded PCM quality, provider availability, and configured model.
