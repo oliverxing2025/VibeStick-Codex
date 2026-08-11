@@ -30,6 +30,7 @@ VALID_PROFILES = {
     "codex-hourglass-dual",
     "fruit-machine-standalone",
     "hourglass-standalone",
+    "stock-monitor-standalone",
     "unassigned",
 }
 
@@ -80,7 +81,7 @@ def find_esptool() -> list[str]:
     if configured:
         path = Path(configured).expanduser()
         if path.is_file():
-            return [str(path)]
+            return [str(path)] if os.access(path, os.X_OK) else [sys.executable, str(path)]
         raise GuardError(f"VIBESTICK_ESPTOOL does not exist: {path}")
 
     discovered = shutil.which("esptool.py")

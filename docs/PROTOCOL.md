@@ -1,6 +1,6 @@
 # Protocol
 
-VibeStick v0.2.0 uses HTTP over Wi-Fi between the StickS3 firmware and the local Mac bridge.
+VibeStick v0.2.1 uses HTTP over Wi-Fi between the StickS3 firmware and the local Mac bridge.
 
 Default bridge URL:
 
@@ -8,13 +8,20 @@ Default bridge URL:
 http://<mac-ip>:8765
 ```
 
+The installed bridge also listens for authenticated discovery requests on UDP
+port `8766`. On Wi-Fi connection and after an HTTP connection failure, the
+firmware broadcasts a nonce, verifies the bridge's HMAC-SHA256 response with the
+shared bridge token, and adopts the responder's current LAN address. The compiled
+host remains only a fallback, so normal DHCP address changes do not require a new
+firmware build.
+
 ## Firmware Headers
 
 Firmware requests include:
 
 ```text
 X-Vibe-Stick-Firmware-Name: vibestick
-X-Vibe-Stick-Firmware-Version: 0.2.0
+X-Vibe-Stick-Firmware-Version: 0.2.1
 X-Vibe-Stick-Firmware-Transport: HTTP
 X-Vibe-Stick-Firmware-Build-Date: <compile date>
 ```
@@ -87,7 +94,7 @@ Returns the current bridge state:
     "message": ""
   },
   "bridge_name": "vibestick-bridge",
-  "bridge_version": "0.2.0"
+  "bridge_version": "0.2.1"
 }
 ```
 
@@ -103,7 +110,7 @@ Returns bridge health metadata:
 {
   "ok": true,
   "bridge_name": "vibestick-bridge",
-  "bridge_version": "0.2.0"
+  "bridge_version": "0.2.1"
 }
 ```
 

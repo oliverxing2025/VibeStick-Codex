@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#项目概览">项目概览</a> ·
-    <a href="#v020-更新与升级说明">v0.2.0</a> ·
+    <a href="#当前开发版本">v0.2.1</a> ·
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
@@ -20,12 +20,19 @@
     <img alt="硬件：M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="平台：macOS" src="https://img.shields.io/badge/platform-macOS-111111">
     <img alt="ESP-IDF：5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="版本：0.2.0" src="https://img.shields.io/badge/version-0.2.0-F3A712">
+    <img alt="版本：0.2.1" src="https://img.shields.io/badge/version-0.2.1-F3A712">
     <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex 竖屏仪表盘产品效果图" width="480">
 </div>
+
+## 当前开发版本
+
+`0.2.1` 新增了经过共享令牌验证的局域网自动发现。StickS3 连上 Wi-Fi 后会
+自动寻找已安装的 Bridge，连接失败时也会重新寻找，因此 Mac 通过 DHCP
+取得新 IP 时无需重新编译固件。固件中配置的地址仅作为备用。最新正式
+Release 仍为 `v0.2.0`。
 
 ## v0.2.0 更新与升级说明
 
@@ -389,8 +396,29 @@ idf.py build
 欢迎贡献,详见 [CONTRIBUTING.md](CONTRIBUTING.md)。报告安全漏洞请见
 [SECURITY.md](SECURITY.md)(请私下报告)。
 
-## 致谢与许可证
+## 版权、素材与许可证说明
 
-VibeStick-Codex 基于 [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick)，并依据 [MIT License](LICENSE) 发布。本项目专注于 M5Stack StickS3 和本地 Codex 集成，不是 M5Stack 或 OpenAI 官方项目。
+VibeStick 原始软件版权归 Gary Zhang 所有，Copyright (c) 2026 Gary Zhang；
+VibeStick-Codex 的修改部分版权归 Oliver Xing 所有，Copyright (c) 2026
+Oliver Xing。原始软件及本项目修改均依据仓库内的
+[MIT License](LICENSE) 发布，并保留双方版权声明。
 
-横屏仪表盘的视觉设计和信息结构参考了 [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF 与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。生成的 Noto Sans SC 字形子集继续适用仓库内附的 [SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt)。详细说明见 [NOTICE](NOTICE) 和[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
+除文件另有说明外，本仓库新增的 Codex 专用 Bridge、macOS HUD、StickS3
+固件修改、简洁的 provider/status 图标、截图、设备效果图和像素状态动画，均
+适用本仓库的 MIT License。该说明不会改变第三方素材原有的许可证，也不授予
+任何第三方名称或商标的权利。
+
+横屏仪表盘的视觉设计和信息结构参考了
+[CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy)，并使用 ESP-IDF
+与 LVGL 独立重新实现；本仓库没有再分发 CodeBuddy 的源代码或美术素材。
+
+第三方组件继续适用各自许可证。其中，生成的 Noto Sans SC 字形子集适用仓库
+内附的
+[SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt)；
+BMI270 驱动保留其随附的上游许可证；ESP-IDF、LVGL 和托管组件分别适用其
+各自许可条款。完整署名和二进制分发说明见 [NOTICE](NOTICE) 与
+[第三方来源审计](docs/THIRD_PARTY_AUDIT.md)。
+
+M5Stack、StickS3、OpenAI 和 Codex 的名称与商标归各自权利人所有，本项目仅
+为说明兼容性和集成关系而使用。本项目是独立的社区项目，与 M5Stack 或 OpenAI
+不存在隶属、授权或官方产品关系，也不代表获得其背书。

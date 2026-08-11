@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import atexit
+import hashlib
 import hmac
 import ipaddress
 import json
 import os
+import socket
 import threading
 import time
+import uuid
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,7 +27,10 @@ from vibe_stick.config.paths import (
     RECORDING_PATH,
     STATE_PATH,
     TASK_STATS_PATH,
+    DESKTOP_BRIDGE_PATH,
+    HOST_SERVICE_DISCOVERY_PATH,
     ensure_app_support,
+    restrict_private_file,
     write_private_text,
 )
 from vibe_stick.desktop.hud import hide_hud
@@ -47,6 +54,9 @@ from vibe_stick.providers.codex import observe_codex
 
 MANUAL_STATUS_SECONDS = 60
 BRIDGE_NAME = "vibestick-bridge"
+DISCOVERY_MAGIC = "VIBESTICK_DISCOVER_V1"
+DISCOVERY_PROOF_PREFIX = "VIBESTICK_DISCOVERY_V1"
+DEFAULT_DISCOVERY_PORT = 8766
 DEFAULT_MAX_RECORDING_AUDIO_BYTES = 2_000_000
 PLACEHOLDER_BRIDGE_TOKENS = {
     "change-this-shared-token",
@@ -58,6 +68,45 @@ PLACEHOLDER_BRIDGE_TOKENS = {
 
 def _local_date_key() -> str:
     return datetime.now().astimezone().date().isoformat()
+
+
+def _discovery_response(request: bytes, bridge_port: int) -> bytes | None:
+    token = _bridge_token()
+    if not token:
+        return None
+    try:
+        magic, nonce = request.decode("ascii").strip().split(" ", 1)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if magic != DISCOVERY_MAGIC or not (8 <= len(nonce) <= 32):
+        return None
+    if any(character not in "0123456789abcdefABCDEF" for character in nonce):
+        return None
+    proof_payload = f"{DISCOVERY_PROOF_PREFIX}:{nonce}:{bridge_port}".encode("ascii")
+    proof = hmac.new(token.encode("utf-8"), proof_payload, hashlib.sha256).hexdigest()
+    return json.dumps(
+        {
+            "bridge_name": BRIDGE_NAME,
+            "port": bridge_port,
+            "nonce": nonce,
+            "proof": proof,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _serve_lan_discovery(bridge_port: int, discovery_port: int) -> None:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(("0.0.0.0", discovery_port))
+            while True:
+                request, client = server.recvfrom(256)
+                response = _discovery_response(request, bridge_port)
+                if response is not None:
+                    server.sendto(response, client)
+    except OSError as error:
+        print(f"VibeStick discovery unavailable on UDP {discovery_port}: {error}", flush=True)
 
 
 class BridgeStateStore:
@@ -476,17 +525,101 @@ def make_handler(store: BridgeStateStore) -> type[BaseHTTPRequestHandler]:
     return VibeStickHandler
 
 
+def _write_desktop_discovery(port: int, instance_id: str) -> None:
+    payload = {
+        "schema_version": 1,
+        "bridge_name": BRIDGE_NAME,
+        "bridge_version": BRIDGE_VERSION,
+        "instance_id": instance_id,
+        "pid": os.getpid(),
+        "state_url": f"http://127.0.0.1:{port}/state",
+        "health_url": f"http://127.0.0.1:{port}/health",
+        "created_at": datetime.now().astimezone().isoformat(),
+    }
+    temporary = DESKTOP_BRIDGE_PATH.with_suffix(f".{instance_id}.tmp")
+    write_private_text(temporary, json.dumps(payload, indent=2) + "\n")
+    os.replace(temporary, DESKTOP_BRIDGE_PATH)
+    restrict_private_file(DESKTOP_BRIDGE_PATH)
+    service_payload = {
+        "schema_version": 1,
+        "service_identity": BRIDGE_NAME,
+        "protocol_version": BRIDGE_VERSION,
+        "instance_id": instance_id,
+        "pid": os.getpid(),
+        "base_url": f"http://127.0.0.1:{port}",
+        "health_url": f"http://127.0.0.1:{port}/health",
+        "legacy_ports": [8765],
+        "created_at": datetime.now().astimezone().isoformat(),
+    }
+    write_private_text(
+        HOST_SERVICE_DISCOVERY_PATH,
+        json.dumps(service_payload, indent=2) + "\n",
+    )
+
+
+def _remove_desktop_discovery(instance_id: str) -> None:
+    try:
+        payload = json.loads(DESKTOP_BRIDGE_PATH.read_text(encoding="utf-8"))
+        if payload.get("instance_id") == instance_id:
+            DESKTOP_BRIDGE_PATH.unlink(missing_ok=True)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    try:
+        payload = json.loads(HOST_SERVICE_DISCOVERY_PATH.read_text(encoding="utf-8"))
+        if payload.get("instance_id") == instance_id:
+            HOST_SERVICE_DISCOVERY_PATH.unlink(missing_ok=True)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+
+
 def run_server(host: str, port: int) -> None:
     _enforce_bind_security(host)
     store = BridgeStateStore()
-    server = ThreadingHTTPServer((host, port), make_handler(store))
+    handler = make_handler(store)
+    # Desktop clients never depend on the LAN/device port. The OS chooses a
+    # private loopback port, and a mode-0600 discovery record advertises it.
+    desktop_server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    desktop_port = int(desktop_server.server_address[1])
+    instance_id = uuid.uuid4().hex
+    _write_desktop_discovery(desktop_port, instance_id)
+    atexit.register(_remove_desktop_discovery, instance_id)
+    desktop_thread = threading.Thread(
+        target=desktop_server.serve_forever,
+        name="vibestick-desktop-bridge",
+        daemon=True,
+    )
+    desktop_thread.start()
+    try:
+        server = ThreadingHTTPServer((host, port), handler)
+    except BaseException:
+        desktop_server.shutdown()
+        desktop_server.server_close()
+        _remove_desktop_discovery(instance_id)
+        raise
+    discovery_port = int(os.environ.get("VIBE_STICK_DISCOVERY_PORT", DEFAULT_DISCOVERY_PORT))
+    if _host_requires_token(host):
+        threading.Thread(
+            target=_serve_lan_discovery,
+            args=(port, discovery_port),
+            name="vibestick-lan-discovery",
+            daemon=True,
+        ).start()
     if not _bridge_token():
         print(
             "WARNING: VIBE_STICK_BRIDGE_TOKEN is not set; POST endpoints are unauthenticated on loopback only.",
             flush=True,
         )
     print(f"VibeStick Bridge listening on http://{host}:{port}", flush=True)
-    server.serve_forever()
+    if _host_requires_token(host):
+        print(f"VibeStick discovery listening on udp://0.0.0.0:{discovery_port}", flush=True)
+    print(f"VibeStick desktop endpoint: http://127.0.0.1:{desktop_port}", flush=True)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        desktop_server.shutdown()
+        desktop_server.server_close()
+        _remove_desktop_discovery(instance_id)
 
 
 def _protected_paths() -> set[str]:

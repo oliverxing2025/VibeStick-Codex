@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef VIRTUAL_DEVICE_HOST
+#include "codex_host.h"
+#else
 #include "vibe_audio.h"
 #include "vibe_board.h"
 #include "vibe_stick_config.h"
@@ -31,10 +34,18 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
+#include "mbedtls/md.h"
+#endif
 #include "vibe_stick_ui_assets.h"
+#ifndef VIRTUAL_DEVICE_HOST
 #include "iot_button.h"
+#endif
 #include "lvgl.h"
+#ifndef VIRTUAL_DEVICE_HOST
 #include "nvs_flash.h"
+#endif
 
 #define LCD_HOST SPI2_HOST
 #define LCD_H_RES 135
@@ -198,6 +209,10 @@ static bool s_alert_sound_baseline_ready;
 static bool s_wait_sound_baseline_ready;
 static int s_last_waiting_tasks;
 static char s_recording_session_id[40];
+static char s_bridge_host[64] = VIBE_STICK_BRIDGE_HOST;
+static uint16_t s_bridge_port = VIBE_STICK_BRIDGE_PORT;
+static bool s_bridge_discovered;
+static int64_t s_last_discovery_attempt_ms;
 
 static lv_display_t *s_display;
 static esp_lcd_panel_handle_t s_panel;
@@ -497,11 +512,15 @@ static void create_portrait_ui(lv_obj_t *screen);
 
 static void queue_event(agent_event_type_t type)
 {
+#ifdef VIRTUAL_DEVICE_HOST
+    (void)type;
+#else
     if (!s_event_queue) {
         return;
     }
     agent_event_t event = {.type = type};
     (void)xQueueSend(s_event_queue, &event, 0);
+#endif
 }
 
 static const agent_provider_config_t *provider_config(agent_provider_t provider)
@@ -560,18 +579,23 @@ static bool set_current_provider_from_key(const char *key)
 
 static void lvgl_lock(void)
 {
+#ifndef VIRTUAL_DEVICE_HOST
     if (s_lvgl_lock) {
         xSemaphoreTake(s_lvgl_lock, portMAX_DELAY);
     }
+#endif
 }
 
 static void lvgl_unlock(void)
 {
+#ifndef VIRTUAL_DEVICE_HOST
     if (s_lvgl_lock) {
         xSemaphoreGive(s_lvgl_lock);
     }
+#endif
 }
 
+#ifndef VIRTUAL_DEVICE_HOST
 static void lvgl_tick_cb(void *arg)
 {
     (void)arg;
@@ -709,6 +733,7 @@ static esp_err_t init_display(void)
     xTaskCreate(lvgl_task, "lvgl", 4096, NULL, 3, NULL);
     return ESP_OK;
 }
+#endif
 
 static lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
                             lv_color_t color, int32_t width, lv_text_align_t align)
@@ -1465,6 +1490,7 @@ static void create_landscape_ui(lv_obj_t *screen)
     s_activity_timer = lv_timer_create(activity_timer_cb, ACTIVITY_FRAME_MS, NULL);
 }
 
+#ifndef VIRTUAL_DEVICE_HOST
 static void switch_display_orientation(bool landscape, bool landscape_reverse)
 {
     lvgl_lock();
@@ -1526,6 +1552,7 @@ static void switch_display_orientation(bool landscape, bool landscape_reverse)
                  : "portrait");
     render_state();
 }
+#endif
 
 static void create_portrait_ui(lv_obj_t *screen)
 {
@@ -1897,6 +1924,7 @@ static void show_recording_overlay(const char *title, const char *hint, bool vis
     lvgl_unlock();
 }
 
+#ifndef VIRTUAL_DEVICE_HOST
 static bool sound_for_alert_type(const char *type, agent_sound_t *sound)
 {
     if (strcmp(type, "DONE") == 0 ||
@@ -2026,11 +2054,101 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
+static bool verify_discovery_proof(const char *nonce, int port, const char *proof)
+{
+    if (!nonce || !proof || strlen(proof) != 64 || strlen(VIBE_STICK_BRIDGE_TOKEN) == 0) {
+        return false;
+    }
+    char payload[96];
+    snprintf(payload, sizeof(payload), "VIBESTICK_DISCOVERY_V1:%s:%d", nonce, port);
+    const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    unsigned char digest[32];
+    if (!info || mbedtls_md_hmac(info,
+                                 (const unsigned char *)VIBE_STICK_BRIDGE_TOKEN,
+                                 strlen(VIBE_STICK_BRIDGE_TOKEN),
+                                 (const unsigned char *)payload, strlen(payload),
+                                 digest) != 0) {
+        return false;
+    }
+    char expected[65];
+    for (size_t i = 0; i < sizeof(digest); ++i) {
+        snprintf(expected + i * 2, 3, "%02x", digest[i]);
+    }
+    unsigned char difference = 0;
+    for (size_t i = 0; i < 64; ++i) {
+        difference |= (unsigned char)(expected[i] ^ proof[i]);
+    }
+    return difference == 0;
+}
+
+static bool discover_bridge(void)
+{
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    if (s_last_discovery_attempt_ms > 0 &&
+        now_ms - s_last_discovery_attempt_ms < VIBE_STICK_DISCOVERY_RETRY_MS) {
+        return s_bridge_discovered;
+    }
+    s_last_discovery_attempt_ms = now_ms;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) return false;
+    int enabled = 1;
+    struct timeval timeout = {.tv_sec = 0, .tv_usec = 900000};
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &enabled, sizeof(enabled));
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    char nonce[17];
+    snprintf(nonce, sizeof(nonce), "%08lx%08lx",
+             (unsigned long)esp_random(), (unsigned long)esp_random());
+    char request[64];
+    snprintf(request, sizeof(request), "VIBESTICK_DISCOVER_V1 %s", nonce);
+    struct sockaddr_in destination = {
+        .sin_family = AF_INET,
+        .sin_port = htons(VIBE_STICK_DISCOVERY_PORT),
+        .sin_addr.s_addr = htonl(INADDR_BROADCAST),
+    };
+    if (sendto(sock, request, strlen(request), 0,
+               (struct sockaddr *)&destination, sizeof(destination)) < 0) {
+        close(sock);
+        return false;
+    }
+
+    char response[256] = {0};
+    struct sockaddr_in source = {0};
+    socklen_t source_len = sizeof(source);
+    int received = recvfrom(sock, response, sizeof(response) - 1, 0,
+                            (struct sockaddr *)&source, &source_len);
+    close(sock);
+    if (received <= 0) return false;
+
+    cJSON *root = cJSON_Parse(response);
+    if (!root) return false;
+    cJSON *name = cJSON_GetObjectItemCaseSensitive(root, "bridge_name");
+    cJSON *port = cJSON_GetObjectItemCaseSensitive(root, "port");
+    cJSON *reply_nonce = cJSON_GetObjectItemCaseSensitive(root, "nonce");
+    cJSON *proof = cJSON_GetObjectItemCaseSensitive(root, "proof");
+    bool valid = cJSON_IsString(name) && cJSON_IsNumber(port) &&
+                 cJSON_IsString(reply_nonce) && cJSON_IsString(proof) &&
+                 strcmp(name->valuestring, "vibestick-bridge") == 0 &&
+                 strcmp(reply_nonce->valuestring, nonce) == 0 &&
+                 port->valueint > 0 && port->valueint <= 65535 &&
+                 verify_discovery_proof(nonce, port->valueint, proof->valuestring);
+    if (valid) {
+        inet_ntoa_r(source.sin_addr, s_bridge_host, sizeof(s_bridge_host));
+        s_bridge_port = (uint16_t)port->valueint;
+        s_bridge_discovered = true;
+        ESP_LOGI(TAG, "bridge discovered at %s:%u", s_bridge_host, s_bridge_port);
+    }
+    cJSON_Delete(root);
+    return valid;
+}
+
 static esp_err_t http_request_timeout(const char *method, const char *path, const char *body,
                                       char *response, int response_len, int timeout_ms)
 {
+    if (!s_bridge_discovered) (void)discover_bridge();
     char url[160];
-    snprintf(url, sizeof(url), "http://%s:%d%s", VIBE_STICK_BRIDGE_HOST, VIBE_STICK_BRIDGE_PORT, path);
+    snprintf(url, sizeof(url), "http://%s:%u%s", s_bridge_host, s_bridge_port, path);
     http_response_capture_t capture = {
         .data = response,
         .capacity = response_len,
@@ -2065,6 +2183,7 @@ static esp_err_t http_request_timeout(const char *method, const char *path, cons
         ESP_LOGW(TAG, "http %s %s status=%d empty response", method, path, status_code);
     }
     esp_http_client_cleanup(client);
+    if (err != ESP_OK) s_bridge_discovered = false;
     return err;
 }
 
@@ -2077,8 +2196,9 @@ static esp_err_t http_request(const char *method, const char *path, const char *
 static esp_err_t http_post_binary(const char *path, const uint8_t *body, size_t body_len,
                                   char *response, int response_len)
 {
+    if (!s_bridge_discovered) (void)discover_bridge();
     char url[192];
-    snprintf(url, sizeof(url), "http://%s:%d%s", VIBE_STICK_BRIDGE_HOST, VIBE_STICK_BRIDGE_PORT, path);
+    snprintf(url, sizeof(url), "http://%s:%u%s", s_bridge_host, s_bridge_port, path);
     http_response_capture_t capture = {
         .data = response,
         .capacity = response_len,
@@ -2114,6 +2234,7 @@ static esp_err_t http_post_binary(const char *path, const uint8_t *body, size_t 
         ESP_LOGW(TAG, "http POST %s status=%d empty response", path, status_code);
     }
     esp_http_client_cleanup(client);
+    if (err != ESP_OK) s_bridge_discovered = false;
     return err;
 }
 
@@ -2592,6 +2713,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         render_state();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         s_wifi_connected = true;
+        s_bridge_discovered = false;
+        s_last_discovery_attempt_ms = 0;
         render_state();
         queue_event(VIBE_STICK_EVENT_POLL_STATE);
     }
@@ -2929,3 +3052,4 @@ void app_main(void)
         xTaskCreate(orientation_task, "orientation", 4096, NULL, 3, NULL);
     }
 }
+#endif

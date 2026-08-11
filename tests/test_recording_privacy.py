@@ -24,6 +24,7 @@ class RecordingPrivacyTests(unittest.TestCase):
                 status="pasted",
                 transcript="private spoken text",
                 audio_file=str(audio_path),
+                command={"action": "add", "symbol": "hk00700"},
             )
 
             with (
@@ -36,6 +37,7 @@ class RecordingPrivacyTests(unittest.TestCase):
             self.assertFalse(audio_path.exists())
             self.assertEqual(controller.session.audio_file, "")
             self.assertEqual(persisted["transcript"], "")
+            self.assertIsNone(persisted["command"])
             self.assertEqual(state_path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(root.stat().st_mode & 0o777, 0o700)
 

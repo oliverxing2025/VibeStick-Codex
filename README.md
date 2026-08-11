@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#overview">Overview</a> ·
-    <a href="#whats-new-in-v020">v0.2.0</a> ·
+    <a href="#current-development-version">v0.2.1</a> ·
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
@@ -20,12 +20,20 @@
     <img alt="Hardware: M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-111111">
     <img alt="ESP-IDF: 5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="Version: 0.2.0" src="https://img.shields.io/badge/version-0.2.0-F3A712">
+    <img alt="Version: 0.2.1" src="https://img.shields.io/badge/version-0.2.1-F3A712">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
   <img src="assets/screenshots/vibestick-codex-portrait-dashboard-v2.png" alt="VibeStick-Codex portrait dashboard product render" width="480">
 </div>
+
+## Current development version
+
+Version `0.2.1` adds authenticated LAN discovery. The StickS3 now discovers the
+installed Bridge after joining Wi-Fi and discovers it again after a connection
+failure, so ordinary Mac DHCP address changes no longer require rebuilding the
+firmware. The configured host remains a fallback. The latest tagged release is
+still `v0.2.0`.
 
 ## What's new in v0.2.0
 
@@ -397,8 +405,33 @@ idf.py build
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability,
 see [SECURITY.md](SECURITY.md) (please report privately).
 
-## Credits & license
+## Copyright, assets & licenses
 
-VibeStick-Codex is based on [GaryGaryyy/VibeStick](https://github.com/GaryGaryyy/VibeStick) and is distributed under the [MIT License](LICENSE). It focuses on M5Stack StickS3 and local Codex integration and is not an official M5Stack or OpenAI project.
+The original VibeStick software is Copyright (c) 2026 Gary Zhang.
+VibeStick-Codex modifications are Copyright (c) 2026 Oliver Xing. The original
+software and these modifications are distributed under the repository's
+[MIT License](LICENSE), with both copyright notices retained.
 
-The landscape dashboard's visual design and information architecture were inspired by [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) and independently reimplemented with ESP-IDF and LVGL. No CodeBuddy source code or artwork is redistributed here. The generated Noto Sans SC glyph subset remains under the bundled [SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt). See [NOTICE](NOTICE) and the [third-party audit](docs/THIRD_PARTY_AUDIT.md) for details.
+Unless a file states otherwise, the Codex-specific bridge, macOS HUD, StickS3
+firmware additions, simple provider/status icons, screenshots, device previews,
+and pixel status animations created for this repository are covered by the same
+MIT License. This does not relicense third-party materials or grant rights in
+third-party names and trademarks.
+
+The landscape dashboard's visual design and information architecture were
+inspired by [CharlexH/CodeBuddy](https://github.com/CharlexH/CodeBuddy) and
+independently reimplemented with ESP-IDF and LVGL. No CodeBuddy source code or
+artwork is redistributed here.
+
+Third-party components retain their own licenses. In particular, the generated
+Noto Sans SC glyph subset remains under the bundled
+[SIL Open Font License 1.1](firmware/sticks3/third_party/noto-sans-sc/OFL.txt),
+and the BMI270 driver retains its included upstream license. ESP-IDF, LVGL, and
+managed components are governed by their respective license terms. See
+[NOTICE](NOTICE) and the [third-party audit](docs/THIRD_PARTY_AUDIT.md) for the
+complete attribution and distribution notes.
+
+M5Stack, StickS3, OpenAI, and Codex names and marks belong to their respective
+owners and are used only to describe compatibility and integration. This is an
+independent community project and is not affiliated with, endorsed by, or an
+official product of M5Stack or OpenAI.

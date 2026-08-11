@@ -12,6 +12,12 @@ QUOTA_PATH = APP_SUPPORT_DIR / "quota.json"
 TASK_STATS_PATH = APP_SUPPORT_DIR / "task-stats.json"
 RECORDING_PATH = APP_SUPPORT_DIR / "recording.json"
 HUD_STATE_PATH = APP_SUPPORT_DIR / "hud-state.json"
+DESKTOP_BRIDGE_PATH = APP_SUPPORT_DIR / "desktop-bridge.json"
+HOST_SERVICE_DISCOVERY_DIR = (
+    Path.home() / "Library" / "Application Support"
+    / "StickS3 Firmware Lab" / "Host Services"
+)
+HOST_SERVICE_DISCOVERY_PATH = HOST_SERVICE_DISCOVERY_DIR / "vibestick-bridge.json"
 RECORDINGS_DIR = APP_SUPPORT_DIR / "Recordings"
 
 

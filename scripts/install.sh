@@ -81,13 +81,26 @@ require_bridge_token_ready() {
   fi
 }
 
-"$SETUP_PATH"
+sh "$SETUP_PATH"
 require_bridge_token_ready
 
 if [ -f "$ENV_PATH" ]; then
   set -a
   . "$ENV_PATH"
   set +a
+fi
+
+BRIDGE_PORT="${VIBE_STICK_BRIDGE_PORT:-8765}"
+BRIDGE_PYTHON="${VIBE_STICK_PYTHON:-$(command -v python3)}"
+case "$BRIDGE_PORT" in
+  *[!0-9]*|"")
+    printf '%s\n' "VIBE_STICK_BRIDGE_PORT must be a numeric TCP port." >&2
+    exit 1
+    ;;
+esac
+if ! "$BRIDGE_PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+  printf '%s\n' "VibeStick Bridge requires Python 3.11 or newer." >&2
+  exit 1
 fi
 
 mkdir -p "$CONFIG_DIR"
@@ -111,7 +124,7 @@ if [ -f "$CONFIG_DIR/.env" ]; then
   . "$CONFIG_DIR/.env"
   set +a
 fi
-PYTHONPATH="$RUNTIME_DIR/bridge/src" exec python3 -m vibe_stick --host 0.0.0.0 --port 8765
+PYTHONPATH="$RUNTIME_DIR/bridge/src" exec "$BRIDGE_PYTHON" -m vibe_stick --host 0.0.0.0 --port $BRIDGE_PORT
 RUNNER
 chmod +x "$RUNNER_PATH"
 

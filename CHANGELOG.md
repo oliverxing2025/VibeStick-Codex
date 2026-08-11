@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.1 (development)
+
+- Added authenticated LAN discovery so the StickS3 automatically follows Mac
+  DHCP address changes at startup and reconnects after a bridge address change.
+- Retained the configured bridge host only as a fallback when discovery is
+  temporarily unavailable.
+
 ## v0.2.0
 
 - Added animated pixel characters to the landscape dashboard for running, waiting for approval, and completed states.

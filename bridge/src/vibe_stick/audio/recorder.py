@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from vibe_stick.audio.transcriber import TranscriptionAdapter
+from vibe_stick.audio.stock_commands import resolve_stock_command
 from vibe_stick.config.paths import (
     RECORDINGS_DIR,
     ensure_private_directory,
@@ -51,6 +52,7 @@ class RecordingSession:
     pasted: bool = False
     audio_file: str = ""
     audio_source: str = "none"
+    command: dict[str, Any] | None = None
 
     def to_jsonable(self) -> dict[str, Any]:
         return asdict(self)
@@ -79,7 +81,9 @@ class RecordingController:
 
     def start(self, request: dict[str, Any] | None = None) -> RecordingSession:
         request = request or {}
-        self.codex_controller.open_or_focus()
+        command_mode = str(request.get("mode") or "").strip().lower() == "stock_command"
+        if not command_mode:
+            self.codex_controller.open_or_focus()
         requested_source = str(request.get("audio_source") or request.get("source") or "")
         requested_session_id = _requested_session_id(request)
         self.session = RecordingSession(
@@ -89,6 +93,7 @@ class RecordingController:
             stopped_at="",
             status="recording",
             message="Recording session started",
+            command=None,
         )
         use_mac_mic = "sticks3" not in requested_source.lower()
         if not use_mac_mic:
@@ -207,6 +212,9 @@ class RecordingController:
                 self._save_stop_result()
                 return self.session
         should_paste = bool(request.get("paste", True))
+        command_mode = str(request.get("mode") or "").strip().lower() == "stock_command"
+        if command_mode:
+            should_paste = False
         press_enter = _should_press_enter(request)
         show_hud("transcribing")
 
@@ -294,9 +302,20 @@ class RecordingController:
                     show_hud("failed", hold_seconds=1.8)
             else:
                 self.session.pasted = False
-                self.session.status = "transcribed"
-                self.session.message = transcript_message
-                hide_hud(delay_seconds=0.5)
+                if command_mode:
+                    self.session.command = resolve_stock_command(transcript.text)
+                    if self.session.command and self.session.command.get("action") != "unknown":
+                        self.session.status = "command_ready"
+                        self.session.message = str(self.session.command.get("label") or "Stock command ready")
+                        hide_hud(delay_seconds=0.5)
+                    else:
+                        self.session.status = "command_unrecognized"
+                        self.session.message = "Stock command was not recognized"
+                        show_hud("unclear", hold_seconds=1.8)
+                else:
+                    self.session.status = "transcribed"
+                    self.session.message = transcript_message
+                    hide_hud(delay_seconds=0.5)
         else:
             self.session.pasted = False
             self.session.status = "transcription_failed"
@@ -322,11 +341,13 @@ class RecordingController:
             pasted=bool(data.get("pasted", False)),
             audio_file=str(data.get("audio_file") or ""),
             audio_source=str(data.get("audio_source") or "none"),
+            command=None,
         )
 
     def _save(self) -> None:
         payload = self.session.to_jsonable()
         payload["transcript"] = ""
+        payload["command"] = None
         write_private_text(self.path, json.dumps(payload, indent=2) + "\n")
 
     def _save_stop_result(self) -> None:

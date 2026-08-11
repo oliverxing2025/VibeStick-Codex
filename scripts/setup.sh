@@ -156,11 +156,15 @@ else
   printf '%s\n' "Generated and wrote one shared bridge token to .env and firmware secrets."
 fi
 
-lan_ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+lan_interface="$(route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')"
+lan_ip="$(ipconfig getifaddr "${lan_interface:-en0}" 2>/dev/null || true)"
 if [ -n "$lan_ip" ]; then
   printf '%s\n' "Detected Mac LAN IP on en0: $lan_ip"
   bridge_host="$(secret_value VIBE_STICK_BRIDGE_HOST "$SECRETS_PATH")"
-  if is_placeholder_host "$bridge_host"; then
+  if [ "${VIBE_STICK_SYNC_BRIDGE_HOST:-0}" = "1" ]; then
+    set_secret_value VIBE_STICK_BRIDGE_HOST "$lan_ip" "$SECRETS_PATH"
+    printf '%s\n' "Updated VIBE_STICK_BRIDGE_HOST to the current LAN IP."
+  elif is_placeholder_host "$bridge_host"; then
     set_secret_value VIBE_STICK_BRIDGE_HOST "$lan_ip" "$SECRETS_PATH"
     printf '%s\n' "Set VIBE_STICK_BRIDGE_HOST in firmware secrets to detected Mac LAN IP."
   elif [ "$bridge_host" = "$lan_ip" ]; then

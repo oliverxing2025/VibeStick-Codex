@@ -4,7 +4,10 @@ import json
 import os
 import subprocess
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # macOS system Python 3.9
+    tomllib = None  # type: ignore[assignment]
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -169,6 +172,8 @@ def _load_asr_config() -> dict[str, str]:
         }
 
     for path in _asr_config_paths():
+        if tomllib is None:
+            break
         try:
             data = tomllib.loads(path.read_text())
         except (FileNotFoundError, OSError, tomllib.TOMLDecodeError):
