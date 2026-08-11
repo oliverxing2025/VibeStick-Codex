@@ -33,7 +33,8 @@ class VoiceSettingsTests(unittest.TestCase):
             self.assertIn("VIBE_STICK_ASR_PROVIDER=openai-compatible", saved)
             self.assertIn("VIBE_STICK_ASR_BASE_URL=https://api.siliconflow.cn/v1", saved)
             self.assertIn("VIBE_STICK_ASR_API_KEY=test-key-123456", saved)
-            self.assertEqual(env_path.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(env_path.stat().st_mode & 0o777, 0o600)
 
     def test_blank_key_preserves_existing_key_and_page_never_echoes_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

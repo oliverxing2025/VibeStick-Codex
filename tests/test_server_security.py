@@ -88,7 +88,8 @@ class ServerSecurityTests(unittest.TestCase):
             self.assertEqual(service["service_identity"], app.BRIDGE_NAME)
             self.assertEqual(service["base_url"], "http://127.0.0.1:43123")
             self.assertEqual(service["legacy_ports"], [8765])
-            self.assertEqual(service_path.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(service_path.stat().st_mode & 0o777, 0o600)
 
     def test_discovery_cleanup_never_removes_a_newer_instance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

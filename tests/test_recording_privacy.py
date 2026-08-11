@@ -38,8 +38,9 @@ class RecordingPrivacyTests(unittest.TestCase):
             self.assertEqual(controller.session.audio_file, "")
             self.assertEqual(persisted["transcript"], "")
             self.assertIsNone(persisted["command"])
-            self.assertEqual(state_path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+            if os.name == "posix":
+                self.assertEqual(state_path.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(root.stat().st_mode & 0o777, 0o700)
 
     def test_explicit_retention_keeps_audio_private(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,7 +69,8 @@ class RecordingPrivacyTests(unittest.TestCase):
                 controller._save_stop_result()
 
             self.assertTrue(audio_path.exists())
-            self.assertEqual(audio_path.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(audio_path.stat().st_mode & 0o777, 0o600)
             persisted = json.loads((root / "recording.json").read_text())
             self.assertEqual(persisted["transcript"], "")
 
