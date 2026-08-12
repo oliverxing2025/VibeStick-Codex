@@ -2,7 +2,7 @@
 
 ## Supported Device
 
-VibeStick v0.3.0 targets M5Stack StickS3.
+VibeStick v0.3.1 targets M5Stack StickS3.
 
 The project does not currently claim support for other devices because the UI layout, front button behavior, microphone path, speaker path, PMIC battery reads, and screen size are all written around StickS3.
 

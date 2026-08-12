@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#项目概览">项目概览</a> ·
-    <a href="#当前正式版本">v0.3.0</a> ·
+    <a href="#当前正式版本">v0.3.1</a> ·
     <a href="#安装">安装</a> ·
     <a href="#配置说明">配置</a> ·
     <a href="#常见问题排查">排查</a> ·
@@ -20,7 +20,7 @@
     <img alt="硬件：M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="平台：macOS 与 Windows 预览" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20preview-111111">
     <img alt="ESP-IDF：5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="版本：0.3.0" src="https://img.shields.io/badge/version-0.3.0-F3A712">
+    <img alt="版本：0.3.1" src="https://img.shields.io/badge/version-0.3.1-F3A712">
     <img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
@@ -29,26 +29,30 @@
 
 ## 当前正式版本
 
-`0.3.0` 已于2026年8月12日发布，新增设备端永久 Wi-Fi 配网：没有已保存网络时自动进入配网，
-在正常 Codex 界面同时按住正面蓝键和侧键 3 秒，设备会自动重启并重新选择
-Wi-Fi；连接失败时自动恢复旧网络。
+`0.3.1` 已于2026年8月12日发布，手机连接设备临时热点后会自动弹出受保护的
+Wi-Fi 配网页面。没有已保存网络时设备自动进入配网；在正常 Codex 界面同时
+按住正面蓝键和侧键 3 秒，设备会自动重启并重新选择 Wi-Fi。连接失败时自动
+恢复旧网络；如果手机阻止自动弹窗，仍可手动打开 `http://192.168.4.1`。
+Bridge 同时兼容当前 Codex 的嵌套授权调用，确保需要人工批准时 StickS3
+仍会收到 WAIT 提示。
 现有 Bridge 内置仅限本机访问的语音服务设置页，不增加第二个电脑软件。
 Bridge 现已打包为自包含的 macOS DMG 和单个 Windows 安装 EXE，
 普通用户无需安装 Python 或使用命令行。Windows 的 Codex 控制、
 自动粘贴和 HUD 仍属预览，尚未完成实机验收。`0.2.1` 的身份
 验证局域网自动发现仍保留。固件和电脑端安装包均可从
-[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0)下载。
+[v0.3.1 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.1)下载。
 
-## v0.3.0 更新与升级说明
+## v0.3.1 更新与升级说明
 
 发布于2026年8月12日。固件、macOS Bridge DMG、Windows Bridge 安装 EXE、
 校验文件和完整发布说明见
-[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0)。
+[v0.3.1 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.1)。
 
 相对 v0.2.0，本版本主要更新如下：
 
-- **永久 Wi-Fi 配网：**首次启动自动打开密码保护的临时热点，可从附近列表选择
-  2.4GHz Wi-Fi；换网失败会恢复旧网络，以后同时按住两键 3 秒即可重新配网。
+- **永久 Wi-Fi 配网：**首次启动自动打开密码保护的临时热点，手机连接后自动
+  弹出配网页面，可从附近列表选择 2.4GHz Wi-Fi；换网失败会恢复旧网络，以后
+  同时按住两键 3 秒即可重新配网。
 - **安全 Bridge 配对：**设备配网页面接收电脑本地生成的配对 Token，经过身份
   验证的自动发现会跟随电脑局域网地址变化。
 - **语音设置并入 Bridge：**仅本机可访问的页面可以配置 ASR 服务商、模型、语言
@@ -59,15 +63,17 @@ Bridge 现已打包为自包含的 macOS DMG 和单个 Windows 安装 EXE，
   Codex 控制和自动粘贴，普通用户无需安装 Python。
 - **跨平台完善：**电脑路径、桌面控制、粘贴、打包测试和 CI 已覆盖 macOS 与
   Windows 行为。
+- **当前 WAIT 识别：**Bridge 能识别需要人工批准的嵌套 Codex 工具调用，并将
+  WAIT 状态发送到 StickS3。
 
 ### 升级方式
 
 | 下载文件 | 写入地址 | 适用场景 | 保留内容 |
 | --- | ---: | --- | --- |
-| `VibeStick-Codex-v0.3.0-app.bin` | `0x320000` | 已确认身份和布局的 Codex + Hourglass 双固件设备，仅更新 Codex 槽位 | 不改动 Hourglass 槽、分区表、OTA 元数据和 NVS |
-| `VibeStick-Codex-v0.3.0-full-install.bin` | `0x0` | 全新独立安装，或明确要替换现有固件布局 | 会替换 bootloader、分区表、OTA 元数据和 `0x20000` 应用 |
-| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` | — | 在 Apple Silicon Mac 安装自包含 Bridge | 首次运行在本机生成私人配置，普通卸载会保留该配置 |
-| `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` | — | 在 64 位 Windows 安装自包含 Bridge | 仅为当前用户安装，并在本机生成私人配置 |
+| `VibeStick-Codex-v0.3.1-app.bin` | `0x320000` | 已确认身份和布局的 Codex + Hourglass 双固件设备，仅更新 Codex 槽位 | 不改动 Hourglass 槽、分区表、OTA 元数据和 NVS |
+| `VibeStick-Codex-v0.3.1-full-install.bin` | `0x0` | 全新独立安装，或明确要替换现有固件布局 | 会替换 bootloader、分区表、OTA 元数据和 `0x20000` 应用 |
+| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.1.dmg` | — | 在 Apple Silicon Mac 安装自包含 Bridge | 首次运行在本机生成私人配置，普通卸载会保留该配置 |
+| `VibeStick-Bridge-Windows-v0.3.1-Setup.exe` | — | 在 64 位 Windows 安装自包含 Bridge | 仅为当前用户安装，并在本机生成私人配置 |
 
 > [!WARNING]
 > 写入前必须核对实体设备身份、分区布局、镜像和地址。双固件设备更新 Codex 时
@@ -163,7 +169,7 @@ API Key 或固定 Token。
 
 #### macOS
 
-1. 下载 `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` 和 SHA-256 文件。
+1. 下载 `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.1.dmg` 和 SHA-256 文件。
 2. 校验后打开 DMG，把 `VibeStick Bridge.app` 拖到“应用程序”。
 3. 当前社区版未使用 Developer ID 签名和公证；首次运行请按住
    Control 点击 App，选“打开”，再确认“打开”。
@@ -183,7 +189,7 @@ API Key 或固定 Token。
 
 #### Windows 预览版
 
-1. 下载 `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` 和 SHA-256 文件。
+1. 下载 `VibeStick-Bridge-Windows-v0.3.1-Setup.exe` 和 SHA-256 文件。
 2. 校验后运行安装器。它只安装到当前用户，添加 Bridge/HUD 自启动，
    并打开同一个本机配对页面。
 3. Windows 防火墙弹窗时，只允许 VibeStick 访问专用网络。
@@ -261,8 +267,10 @@ ls /dev/cu.*
 等到终端出现 `Hash of data verified`。
 
 7. 👤 短按电源键唤醒屏幕。没有已保存网络时，屏幕会显示临时
-Wi-Fi 名称、8 位纯数字密码和 `192.168.4.1`。用手机连接该加密网络，打开
-地址后从附近 Wi-Fi 列表中选择与电脑一致的 2.4GHz Wi-Fi；隐藏网络也可手动
+Wi-Fi 名称、8 位纯数字密码和 `192.168.4.1`。用手机连接该加密网络后，
+系统会自动弹出配网页面；如果手机阻止了自动弹窗，请手动打开
+`http://192.168.4.1`。从附近 Wi-Fi 列表中选择与电脑一致的
+2.4GHz Wi-Fi；隐藏网络也可手动
 输入。首次配对时，还要把电脑语音设置页里的 Bridge
 配对 Token 复制进设备页面；以后只换 Wi-Fi 时可以留空。在正常 Codex 界面
 同时按住两键 3 秒即可自动重启进入配网，连接失败会恢复上一个网络。

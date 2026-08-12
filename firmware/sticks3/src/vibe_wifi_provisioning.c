@@ -1,6 +1,7 @@
 #include "vibe_wifi_provisioning.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,9 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "apps/dhcpserver/dhcpserver.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
 #include "nvs.h"
 
 #define WIFI_NVS_NAMESPACE "vibewifi"
@@ -26,9 +30,187 @@
 #define WIFI_NVS_SETUP_REQUEST_KEY "setup"
 #define WIFI_SETUP_MAX_APS 12
 #define WIFI_SETUP_HTML_CAPACITY 7168
+#define WIFI_SETUP_DNS_PORT 53
+#define WIFI_SETUP_DNS_PACKET_CAPACITY 300
+#define WIFI_SETUP_DNS_TTL_SECONDS 60
 
 static const char *TAG = "vibe_wifi";
 static httpd_handle_t s_http_server;
+static TaskHandle_t s_dns_server_task;
+
+static uint16_t dns_read_u16(const uint8_t *value)
+{
+    uint16_t network_value;
+    memcpy(&network_value, value, sizeof(network_value));
+    return ntohs(network_value);
+}
+
+static void dns_write_u16(uint8_t *destination, uint16_t value)
+{
+    uint16_t network_value = htons(value);
+    memcpy(destination, &network_value, sizeof(network_value));
+}
+
+static void dns_write_u32(uint8_t *destination, uint32_t value)
+{
+    uint32_t network_value = htonl(value);
+    memcpy(destination, &network_value, sizeof(network_value));
+}
+
+static size_t build_dns_redirect_response(const uint8_t *request,
+                                          size_t request_length,
+                                          uint8_t *response,
+                                          size_t response_capacity,
+                                          uint32_t ap_ip_address)
+{
+    const size_t header_length = 12;
+    if (request_length < header_length || response_capacity < header_length ||
+        (dns_read_u16(request + 2) & 0xf800U) != 0 ||
+        dns_read_u16(request + 4) == 0) {
+        return 0;
+    }
+
+    size_t cursor = header_length;
+    while (cursor < request_length) {
+        uint8_t label_length = request[cursor++];
+        if (label_length == 0) {
+            break;
+        }
+        if ((label_length & 0xc0U) != 0 || label_length > 63 ||
+            cursor + label_length > request_length) {
+            return 0;
+        }
+        cursor += label_length;
+    }
+    if (cursor + 4 > request_length) {
+        return 0;
+    }
+
+    uint16_t question_type = dns_read_u16(request + cursor);
+    uint16_t question_class = dns_read_u16(request + cursor + 2);
+    size_t question_end = cursor + 4;
+    bool answer_ipv4 = question_type == 1 && question_class == 1;
+    size_t answer_length = answer_ipv4 ? 16 : 0;
+    if (question_end + answer_length > response_capacity) {
+        return 0;
+    }
+
+    memcpy(response, request, question_end);
+    dns_write_u16(response + 2, 0x8180);
+    dns_write_u16(response + 4, 1);
+    dns_write_u16(response + 6, answer_ipv4 ? 1 : 0);
+    dns_write_u16(response + 8, 0);
+    dns_write_u16(response + 10, 0);
+    if (!answer_ipv4) {
+        return question_end;
+    }
+
+    uint8_t *answer = response + question_end;
+    dns_write_u16(answer, 0xc00c);
+    dns_write_u16(answer + 2, 1);
+    dns_write_u16(answer + 4, 1);
+    dns_write_u32(answer + 6, WIFI_SETUP_DNS_TTL_SECONDS);
+    dns_write_u16(answer + 10, 4);
+    memcpy(answer + 12, &ap_ip_address, sizeof(ap_ip_address));
+    return question_end + answer_length;
+}
+
+static void dns_redirect_server_task(void *argument)
+{
+    esp_netif_t *ap_netif = argument;
+    int socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (socket_fd < 0) {
+        ESP_LOGE(TAG, "Could not create captive portal DNS socket: errno %d",
+                 errno);
+        s_dns_server_task = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    struct sockaddr_in bind_address = {
+        .sin_family = AF_INET,
+        .sin_port = htons(WIFI_SETUP_DNS_PORT),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+    if (bind(socket_fd, (struct sockaddr *)&bind_address,
+             sizeof(bind_address)) != 0) {
+        ESP_LOGE(TAG, "Could not bind captive portal DNS socket: errno %d",
+                 errno);
+        close(socket_fd);
+        s_dns_server_task = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Captive portal DNS redirect active");
+    while (true) {
+        uint8_t request[WIFI_SETUP_DNS_PACKET_CAPACITY];
+        struct sockaddr_storage source_address;
+        socklen_t source_length = sizeof(source_address);
+        int received = recvfrom(socket_fd, request, sizeof(request), 0,
+                                (struct sockaddr *)&source_address,
+                                &source_length);
+        if (received < 0) {
+            ESP_LOGW(TAG, "Captive portal DNS receive failed: errno %d", errno);
+            continue;
+        }
+
+        esp_netif_ip_info_t ip_info;
+        if (esp_netif_get_ip_info(ap_netif, &ip_info) != ESP_OK) {
+            continue;
+        }
+        uint8_t response[WIFI_SETUP_DNS_PACKET_CAPACITY];
+        size_t response_length = build_dns_redirect_response(
+            request, (size_t)received, response, sizeof(response),
+            ip_info.ip.addr);
+        if (response_length > 0) {
+            (void)sendto(socket_fd, response, response_length, 0,
+                         (struct sockaddr *)&source_address, source_length);
+        }
+    }
+}
+
+static esp_err_t configure_captive_portal(esp_netif_t *ap_netif)
+{
+    if (ap_netif == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_netif_ip_info_t ip_info;
+    ESP_RETURN_ON_ERROR(esp_netif_get_ip_info(ap_netif, &ip_info), TAG,
+                        "setup AP address");
+
+    esp_err_t err = esp_netif_dhcps_stop(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        return err;
+    }
+    dhcps_offer_t dns_offer = OFFER_DNS;
+    ESP_RETURN_ON_ERROR(esp_netif_dhcps_option(
+                            ap_netif, ESP_NETIF_OP_SET,
+                            ESP_NETIF_DOMAIN_NAME_SERVER, &dns_offer,
+                            sizeof(dns_offer)),
+                        TAG, "setup DNS offer");
+    esp_netif_dns_info_t dns_info = {0};
+    dns_info.ip.u_addr.ip4.addr = ip_info.ip.addr;
+    dns_info.ip.type = IPADDR_TYPE_V4;
+    ESP_RETURN_ON_ERROR(esp_netif_set_dns_info(
+                            ap_netif, ESP_NETIF_DNS_MAIN, &dns_info),
+                        TAG, "setup DNS address");
+    /* Do not advertise DHCP Option 114 from this HTTP-only local portal.
+     * RFC 8910 defines that value as a CAPPORT API endpoint, and Apple
+     * requires that API to use trusted TLS. Legacy captive probes plus the
+     * local DNS redirect are the compatible path for an offline device AP. */
+    err = esp_netif_dhcps_start(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+        return err;
+    }
+    if (s_dns_server_task == NULL &&
+        xTaskCreate(dns_redirect_server_task, "captive_dns", 4096, ap_netif, 5,
+                    &s_dns_server_task) != pdPASS) {
+        s_dns_server_task = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
 
 static void generate_ap_password(char *password, size_t capacity)
 {
@@ -372,6 +554,21 @@ static esp_err_t setup_page_handler(httpd_req_t *request)
     return result;
 }
 
+static esp_err_t setup_head_handler(httpd_req_t *request)
+{
+    httpd_resp_set_type(request, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    return httpd_resp_send(request, NULL, 0);
+}
+
+static esp_err_t setup_redirect_handler(httpd_req_t *request)
+{
+    httpd_resp_set_status(request, "303 See Other");
+    httpd_resp_set_hdr(request, "Location", "/");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(request, "Open the VibeStick setup page");
+}
+
 static int hex_value(char value)
 {
     if (value >= '0' && value <= '9') return value - '0';
@@ -514,8 +711,10 @@ static esp_err_t save_handler(httpd_req_t *request)
 esp_err_t vibe_wifi_start_provisioning(vibe_wifi_setup_display_cb_t display_cb)
 {
     ESP_RETURN_ON_ERROR(init_network_stack(), TAG, "network stack");
-    esp_netif_create_default_wifi_ap();
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    ESP_RETURN_ON_FALSE(ap_netif != NULL && sta_netif != NULL, ESP_FAIL, TAG,
+                        "setup network interfaces");
     ESP_RETURN_ON_ERROR(esp_wifi_set_storage(WIFI_STORAGE_RAM), TAG,
                         "Wi-Fi RAM storage");
 
@@ -539,35 +738,35 @@ esp_err_t vibe_wifi_start_provisioning(vibe_wifi_setup_display_cb_t display_cb)
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap_config), TAG,
                         "setup AP config");
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "setup AP start");
+    ESP_RETURN_ON_ERROR(configure_captive_portal(ap_netif), TAG,
+                        "captive portal");
 
     httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
     server_config.max_uri_handlers = 4;
+    server_config.uri_match_fn = httpd_uri_match_wildcard;
     ESP_RETURN_ON_ERROR(httpd_start(&s_http_server, &server_config), TAG,
                         "setup web server");
     const httpd_uri_t root = {
-        .uri = "/", .method = HTTP_GET, .handler = setup_page_handler,
+        .uri = "/*", .method = HTTP_GET, .handler = setup_page_handler,
+    };
+    const httpd_uri_t head = {
+        .uri = "/*", .method = HTTP_HEAD, .handler = setup_head_handler,
     };
     const httpd_uri_t save = {
         .uri = "/save", .method = HTTP_POST, .handler = save_handler,
     };
-    const httpd_uri_t android_probe = {
-        .uri = "/generate_204", .method = HTTP_GET,
-        .handler = setup_page_handler,
-    };
-    const httpd_uri_t apple_probe = {
-        .uri = "/hotspot-detect.html", .method = HTTP_GET,
-        .handler = setup_page_handler,
+    const httpd_uri_t post_fallback = {
+        .uri = "/*", .method = HTTP_POST, .handler = setup_redirect_handler,
     };
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_http_server, &root), TAG,
                         "setup page");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_http_server, &head), TAG,
+                        "setup HEAD probe");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_http_server, &save), TAG,
                         "setup save");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_http_server,
-                                                   &android_probe), TAG,
-                        "Android captive portal probe");
-    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_http_server,
-                                                   &apple_probe), TAG,
-                        "Apple captive portal probe");
+                                                   &post_fallback), TAG,
+                        "setup POST fallback");
     if (display_cb != NULL) {
         display_cb(ap_ssid, ap_password);
     }

@@ -8,7 +8,7 @@
   </p>
   <p>
     <a href="#overview">Overview</a> ·
-    <a href="#current-release">v0.3.0</a> ·
+    <a href="#current-release">v0.3.1</a> ·
     <a href="#install">Install</a> ·
     <a href="#configuration">Configuration</a> ·
     <a href="#troubleshooting">Troubleshooting</a> ·
@@ -20,7 +20,7 @@
     <img alt="Hardware: M5Stack StickS3" src="https://img.shields.io/badge/hardware-M5Stack%20StickS3-EA1D2C">
     <img alt="Platform: macOS and Windows preview" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20preview-111111">
     <img alt="ESP-IDF: 5.5" src="https://img.shields.io/badge/ESP--IDF-5.5-E7352C">
-    <img alt="Version: 0.3.0" src="https://img.shields.io/badge/version-0.3.0-F3A712">
+    <img alt="Version: 0.3.1" src="https://img.shields.io/badge/version-0.3.1-F3A712">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639">
   </p>
   <br>
@@ -29,29 +29,34 @@
 
 ## Current release
 
-Version `0.3.0` was released on August 12, 2026 and adds permanent device-side Wi-Fi provisioning. A device without
-a saved network opens setup automatically; holding both buttons for three
-seconds on the normal Codex screen restarts directly into setup. Failed changes
-restore the previous network.
+Version `0.3.1` was released on August 12, 2026 and makes the protected Wi-Fi
+setup page open automatically after a phone joins the device access point. A
+device without a saved network enters setup automatically; holding both buttons
+for three seconds on the normal Codex screen restarts directly into setup.
+Failed changes restore the previous network, and `http://192.168.4.1` remains
+available when a phone suppresses its captive-portal window. The Bridge also
+recognizes current nested Codex approval calls so WAIT notifications continue
+to reach the StickS3.
 The existing Bridge now includes a loopback-only voice-service settings page.
 The Bridge is now packaged as a self-contained macOS DMG and a single Windows
 Setup EXE, so ordinary users do not install Python or use a terminal. Windows
 Codex controls, automatic paste, and HUD remain preview support pending real
 Windows acceptance. Authenticated LAN discovery from `0.2.1` remains in place.
 Download the firmware and desktop installers from the
-[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0).
+[v0.3.1 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.1).
 
-## What's new in v0.3.0
+## What's new in v0.3.1
 
 Released on August 12, 2026. Download the firmware, macOS Bridge DMG, Windows
 Bridge Setup EXE, checksums, and complete notes from the
-[v0.3.0 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.0).
+[v0.3.1 Release](https://github.com/oliverxing2025/VibeStick-Codex/releases/tag/v0.3.1).
 
 Compared with v0.2.0:
 
 - **Permanent Wi-Fi setup:** first boot opens a password-protected setup hotspot;
-  users can choose a nearby 2.4 GHz network, and a failed change restores the
-  previous network. Hold both buttons for three seconds to reopen setup later.
+  its setup page opens automatically after a phone joins, users can choose a
+  nearby 2.4 GHz network, and a failed change restores the previous network.
+  Hold both buttons for three seconds to reopen setup later.
 - **Secure Bridge pairing:** the device setup page accepts the locally generated
   pairing token, while authenticated discovery follows computer address changes.
 - **Built-in voice settings:** the Bridge provides a loopback-only page for ASR
@@ -62,15 +67,17 @@ Compared with v0.2.0:
   autostart, Codex controls, and automatic paste without requiring Python.
 - **Cross-platform hardening:** computer paths, desktop controls, paste handling,
   packaging tests, and CI now cover macOS and Windows behavior.
+- **Current WAIT detection:** nested Codex tool calls that require human
+  approval are recognized by the Bridge and reported to the StickS3.
 
 ### Upgrade paths
 
 | Download | Flash offset | Use it when | What it preserves |
 | --- | ---: | --- | --- |
-| `VibeStick-Codex-v0.3.0-app.bin` | `0x320000` | Updating the Codex slot on an already verified Codex + Hourglass dual-app device | Keeps the Hourglass slot, partition table, OTA metadata, and NVS untouched |
-| `VibeStick-Codex-v0.3.0-full-install.bin` | `0x0` | Clean standalone installation, or intentionally replacing the existing firmware layout | Replaces the bootloader, partition table, OTA metadata, and application at `0x20000` |
-| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` | — | Installing the self-contained Bridge on Apple Silicon macOS | Creates private configuration locally and preserves it during ordinary uninstall |
-| `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` | — | Installing the self-contained Bridge on 64-bit Windows | Installs per user and creates private configuration locally |
+| `VibeStick-Codex-v0.3.1-app.bin` | `0x320000` | Updating the Codex slot on an already verified Codex + Hourglass dual-app device | Keeps the Hourglass slot, partition table, OTA metadata, and NVS untouched |
+| `VibeStick-Codex-v0.3.1-full-install.bin` | `0x0` | Clean standalone installation, or intentionally replacing the existing firmware layout | Replaces the bootloader, partition table, OTA metadata, and application at `0x20000` |
+| `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.1.dmg` | — | Installing the self-contained Bridge on Apple Silicon macOS | Creates private configuration locally and preserves it during ordinary uninstall |
+| `VibeStick-Bridge-Windows-v0.3.1-Setup.exe` | — | Installing the self-contained Bridge on 64-bit Windows | Installs per user and creates private configuration locally |
 
 > [!WARNING]
 > Verify the physical device identity, partition layout, image, and offset
@@ -173,7 +180,7 @@ Wi-Fi password, API key, or fixed token is embedded in either package.
 
 #### macOS
 
-1. Download `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.0.dmg` and its SHA-256 file.
+1. Download `VibeStick-Bridge-macOS-Apple-Silicon-v0.3.1.dmg` and its SHA-256 file.
 2. Verify the checksum, open the DMG, and drag `VibeStick Bridge.app` to Applications.
 3. Because this community build is not Developer ID signed or notarized,
    Control-click the app, choose **Open**, then confirm **Open** on first launch.
@@ -194,7 +201,7 @@ configuration directory until the user deletes it manually.
 
 #### Windows preview
 
-1. Download `VibeStick-Bridge-Windows-v0.3.0-Setup.exe` and its SHA-256 file.
+1. Download `VibeStick-Bridge-Windows-v0.3.1-Setup.exe` and its SHA-256 file.
 2. Verify the checksum and run the installer. It installs only for the current
    user, adds Bridge/HUD autostart, and opens the same local pairing page.
 3. If Windows Firewall prompts, allow VibeStick only on private networks.
@@ -276,9 +283,11 @@ Wait for `Hash of data verified`.
 
 7. 👤 Short-press the power button to wake the screen. With no saved network,
 the device shows a temporary Wi-Fi SSID, eight-digit password, and `192.168.4.1`.
-Connect a phone to that protected network, open the address, and choose the same
-2.4 GHz Wi-Fi as the computer from the nearby-network list, or enter a hidden
-network manually. On first pairing, copy the Bridge pairing token from the
+Connect a phone to that protected network; its captive-portal window should
+open automatically. If the phone suppresses the window, open
+`http://192.168.4.1` manually. Choose the same 2.4 GHz Wi-Fi as the computer
+from the nearby-network list, or enter a hidden network manually. On first
+pairing, copy the Bridge pairing token from the
 computer's voice settings page into the device page. To change only Wi-Fi later,
 the token can remain blank. On the normal Codex screen, hold both device buttons
 for three seconds to restart into setup; a failed change restores the previous network.

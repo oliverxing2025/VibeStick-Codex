@@ -780,7 +780,7 @@ def _tool_call_requires_approval(payload: dict[str, Any]) -> bool:
             if _contains_required_escalation(decoded):
                 return True
             if re.search(
-                r"""["']sandbox_permissions["']\s*:\s*["']require_escalated["']""",
+                r"""(?:["']sandbox_permissions["']|\bsandbox_permissions)\s*:\s*["']require_escalated["']""",
                 value,
             ):
                 return True

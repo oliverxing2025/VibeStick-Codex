@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.1 — 2026-08-12
+
+- Added captive-portal DNS redirection and wildcard HTTP probe handling so
+  phones can open the protected Wi-Fi setup page automatically after joining
+  the device access point.
+- Added compatible `GET`, `HEAD`, and fallback `POST` responses for operating
+  system captive-network checks, while retaining `http://192.168.4.1` as a
+  manual fallback.
+- Avoided advertising DHCP Option 114 from the offline HTTP-only setup portal;
+  that option identifies a CAPPORT API endpoint and requires trusted TLS on
+  Apple platforms.
+- Updated Codex approval detection for nested JavaScript-style tool calls so
+  current Bridge installations continue to report and sound the WAIT state on
+  StickS3 when human approval is required.
+
 ## v0.3.0 — 2026-08-12
 
 - Added first-boot and in-app two-button Wi-Fi provisioning through a

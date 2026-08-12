@@ -483,6 +483,32 @@ class CodexProviderTests(unittest.TestCase):
 
         self.assertTrue(_session_is_waiting(events, now))
 
+    def test_unanswered_nested_js_escalation_counts_as_waiting(self) -> None:
+        now = datetime(2026, 8, 12, 1, 0, tzinfo=timezone.utc)
+        events = [
+            {
+                "timestamp": (now - timedelta(seconds=3)).isoformat(),
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "call_id": "call_nested_pending",
+                    "name": "functions.exec",
+                    "input": (
+                        'const result = await tools.exec_command({'
+                        'cmd: "open app", sandbox_permissions: '
+                        '"require_escalated", justification: "Allow?"});'
+                    ),
+                },
+            },
+            {
+                "timestamp": (now - timedelta(seconds=2)).isoformat(),
+                "type": "event_msg",
+                "payload": {"type": "token_count"},
+            },
+        ]
+
+        self.assertTrue(_session_is_waiting(events, now))
+
     def test_pending_human_approval_becomes_primary_waiting_status(self) -> None:
         now = datetime.now(timezone.utc)
         events = [
